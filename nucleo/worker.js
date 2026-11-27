@@ -12,7 +12,8 @@ export function handle(op, d){
     case "parla": return M.parla(d);
     case "map": return M.net.map(d.words);
     case "near": return M.net.near(d.w, d.n || 3, d.among || null);
-    case "save": return M.save();
+    case "save": return M.save(!!d.half);
+    case "lessico": return M.lessico();
     case "info": return M.info();
   }
   throw new Error("op sconosciuta " + op);

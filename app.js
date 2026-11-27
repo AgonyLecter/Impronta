@@ -2,6 +2,7 @@
 import * as B from "./brain.js";
 import { Ritmo, liveRead, prophecy, prophecyHit } from "./senso.js";
 import { Nucleo, AFFETTI, etichetta, conferma, registra, analizza } from "./nucleo/index.js";
+import { impacchetta, spacchetta } from "./nucleo/pacco.js";
 const { PHASES, LIMITS, ENERGY, NEED, HOUR, DAY, DAYS, G, STOP } = B;
 
 /* ================= CONFIG ================= */
@@ -43,7 +44,7 @@ function blank(id){ return { v:2, id, born:0, name:"", userName:"", firstWord:""
   phase:0, words:{}, phrases:{}, quotes:[], likes:[], dislikes:[], defs:{}, self:{is:[],likes:[]}, facts:{},
   traits:{calore:0,ironia:0,curiosita:0,coraggio:0,calma:0,malinconia:0},
   user:{msgs:0,chars:0,emoji:{},emojiMsgs:0,lower:0,excl:0,dot:0,abbr:{},hours:Array(24).fill(0),firstLens:[],lens:[],typing:{n:0,cps:0,del:0}},
-  mem:{feel:[],events:[],people:{},topics:{},corpus:[],ask:null,openers:[],react:{},reward:{},labels:[],mood:[],pendingQ:null,confirm:null,ironyLex:{},ironyStats:{asked:0,hist:[]}},
+  mem:{feel:[],events:[],people:{},topics:{},corpus:[],ask:null,openers:[],react:{},reward:{},labels:[],mood:[],pendingQ:null,confirm:null,ironyLex:{},ironyStats:{asked:0,hist:[]},studia:[],scoperte:[],studio:null},
   log:[], diary:[], diaryUnread:0, glyphs:[], revealed:false,
   energy:{used:0,sleepUntil:0}, lastSeen:0, sessions:0, sparks:{}, hurt:0, promise:0, litSeen:0, sound:true, netSync:0, netUp:0, updatedAt:0 }; }
 const arr = v => Array.isArray(v) ? v : v ? Object.values(v) : [];
@@ -54,7 +55,7 @@ function normalize(s, id){
   for (const k of ["hours","firstLens","lens"]) o.user[k] = arr(o.user[k]);
   if (o.user.hours.length < 24) o.user.hours = Array(24).fill(0).map((_,i)=>o.user.hours[i]||0);
   o.user.typing = Object.assign({n:0,cps:0,del:0}, o.user.typing||{});
-  for (const k of ["feel","events","corpus","openers","labels","mood"]) o.mem[k] = arr(o.mem[k]);
+  for (const k of ["feel","events","corpus","openers","labels","mood","studia","scoperte"]) o.mem[k] = arr(o.mem[k]);
   for (const k of ["people","topics","react","reward","ironyLex"]) o.mem[k] = o.mem[k]||{};
   o.mem.ironyStats = Object.assign({asked:0,hist:[]}, o.mem.ironyStats||{}); o.mem.ironyStats.hist = arr(o.mem.ironyStats.hist);
   o.self = Object.assign({is:[],likes:[]}, o.self||{}); o.self.is = arr(o.self.is); o.self.likes = arr(o.self.likes); o.facts = o.facts||{};
@@ -94,9 +95,9 @@ async function syncNetUp(){
   if (!fb || !nucleo.ready || leaving || !(isAsleep() || S.energy.sleepStart)) return;
   try{
     const steps = nucleo.info && nucleo.info.steps; if (!steps || steps === S.netUp) return;
-    const saved = await nucleo.esporta(); if (!saved) return;
+    const saved = await nucleo.esporta(nucleo.info.params > 3e5); if (!saved) return;   // le reti grandi viaggiano a 16 bit
     const at = Date.now();
-    await fb.set(fb.ref(fb.db, NETS+"/"+S.id), { meta:{ at, steps: saved.steps, H: saved.H, by:"tel" }, net: JSON.stringify(saved) });
+    await fb.set(fb.ref(fb.db, NETS+"/"+S.id), impacchetta(saved, { at, steps: saved.steps, H: saved.H, L: saved.L || 1, by:"tel" }));
     S.netSync = at; S.netUp = steps; save();
   }catch(e){ console.warn("rete non caricata", e && e.message); }
 }
@@ -108,13 +109,13 @@ async function syncNetDown(){
     const ms = await Promise.race([fb.get(fb.ref(fb.db, NETS+"/"+S.id+"/meta")), wait(5000).then(()=>null)]);
     const meta = ms && ms.exists() ? ms.val() : null;
     if (!meta || meta.by !== "srv" || !(meta.at > (S.netSync||0)) || !(meta.steps > ((nucleo.info && nucleo.info.steps) || 0))) return false;
-    const ns = await Promise.race([fb.get(fb.ref(fb.db, NETS+"/"+S.id+"/net")), wait(20000).then(()=>null)]);
-    if (!ns || !ns.exists()) return false;
-    const before = nucleo.info || {}, net = ns.val(), saved = typeof net === "string" ? JSON.parse(net) : net;
+    const get = async k => { const sn = await Promise.race([fb.get(fb.ref(fb.db, NETS+"/"+S.id+"/"+k)), wait(60000).then(()=>null)]); if (!sn || !sn.exists()) throw new Error("rete incompleta"); return sn.val(); };
+    const nodo = meta.parts ? { parts: await Promise.all(Array.from({ length: meta.parts }, (_, i) => get("parts/"+i))) } : { net: await get("net") };
+    const before = nucleo.info || {}, saved = spacchetta(nodo);
     const info = await nucleo.importa(saved, { corpus: S.mem.corpus, labels: S.mem.labels, seed: strSeed(S.id) });
     if (!info) return false;
-    S.netSync = meta.at; S.netUp = info.steps; save();
-    const grew = info.H > (before.H || info.H) ? ` · è cresciuto a ${info.H} neuroni` : "";
+    S.netSync = meta.at; S.netUp = info.steps; save(); lessico();
+    const grew = info.H > (before.H || info.H) || (info.L||1) > (before.L||1) ? ` · ora ha ${info.H} neuroni${(info.L||1) > 1 ? ` in ${info.L} strati` : ""}` : "";
     setHint(`ha sognato mentre l'app era chiusa · +${Math.max(0, info.steps - (before.steps||0))} passi${grew}`, true);
     ripple(.5, 55); render();
     return true;
@@ -278,12 +279,15 @@ function favicon(){ try{ const c=document.createElement("canvas"); c.width=c.hei
 
 /* ================= NUCLEO (rete che cresce da sola) ================= */
 const nucleo = new Nucleo({
-  onCresce: (g) => { ripple(.9, 50); setTimeout(()=>ripple(.6, 65), 250); buzz([20,40,20]); tone(660,.12,"triangle",.03); tone(990,.16,"triangle",.03,.12); setHint(`*è cresciuto* · ${g.from} → ${g.to} neuroni`, true); S.sparks.lastGrow = { ...g, t: Date.now() }; save(); }
+  onCresce: (g) => { ripple(.9, 50); setTimeout(()=>ripple(.6, 65), 250); buzz([20,40,20]); tone(660,.12,"triangle",.03); tone(990,.16,"triangle",.03,.12); setHint(g.strati ? `*è cresciuto* · ora pensa su ${g.strati} strati` : `*è cresciuto* · ${g.from} → ${g.to} neuroni`, true); S.sparks.lastGrow = { ...g, t: Date.now() }; save(); }
 });
 let menteStart = null;
+/* le parole che ha studiato da solo: può usarle, ma restano distinte dalle tue */
+let STUDIATE = [];
+async function lessico(){ STUDIATE = await nucleo.lessico(); B.setStudiate(new Set(STUDIATE)); }
 const mente = {
   get ready(){ return nucleo.ready; }, get info(){ return nucleo.info; },
-  start(){ return menteStart = nucleo.avvia({ corpus: S.mem.corpus, labels: S.mem.labels, seed: strSeed(S.id) }).catch(e => console.warn("nucleo", e)); },
+  start(){ return menteStart = nucleo.avvia({ corpus: S.mem.corpus, labels: S.mem.labels, seed: strSeed(S.id) }).then(r => { lessico(); return r; }).catch(e => console.warn("nucleo", e)); },
   train(){ return nucleo.impara(200); },
   persist(){ return nucleo.salva(); },
   speak(seeds, n){ return nucleo.parla(seeds, n); },
@@ -302,13 +306,13 @@ function render(){
   $("#meta").textContent = S.born ? `giorno ${dayN()} · ${PHASES[p]}` : "";
   $("#cname").textContent = S.name || (S.born ? "· · ·" : "");
   const k = known(), max = ENERGY[p], left = Math.max(0, max - S.energy.used), e5 = Math.ceil(left/max*5);
-  $("#stats").innerHTML = S.born && S.name ? `<button id="bWords">${k} parole</button><button id="bDiary" class="${S.diaryUnread?"badge":""}">diario</button><button id="bMind">mente</button><span class="en" title="energia">${isAsleep()?"dorme":"●".repeat(e5)+"○".repeat(5-e5)}</span>` : "";
+  $("#stats").innerHTML = S.born && S.name ? `<button id="bWords">${k} parole</button><button id="bDiary" class="${S.diaryUnread?"badge":""}">diario</button><button id="bMind">mente</button>${phase()>=3 ? `<button id="bStudy" class="${S.mem.scoperte.some(x=>!x.detta)?"badge":""}">studio</button>` : ""}<span class="en" title="energia">${isAsleep()?"dorme":"●".repeat(e5)+"○".repeat(5-e5)}</span>` : "";
   inp.maxLength = LIMITS[p];
   const off = !S.born || isAsleep();
   $("#bar").classList.toggle("off", off); inp.disabled = off; $("#send").disabled = off;
   inp.placeholder = !S.born ? "" : isAsleep() ? `dorme · fino alle ${hhmm(S.energy.sleepUntil-devOffset)} · tieni premuto sul volto` : S.awaitName ? "dagli un nome" : "insegnagli qualcosa";
   updCount();
-  const b1=$("#bWords"), b2=$("#bDiary"), b3=$("#bMind"); if(b1) b1.onclick=showWords; if(b2) b2.onclick=showDiary; if(b3) b3.onclick=showMind;
+  const b1=$("#bWords"), b2=$("#bDiary"), b3=$("#bMind"); if(b1) b1.onclick=showWords; if(b2) b2.onclick=showDiary; if(b3) b3.onclick=showMind; const b4=$("#bStudy"); if(b4) b4.onclick=showStudy;
 }
 function updCount(){ const l=inp.value.length, m=inp.maxLength; $("#cnt").textContent = S.born && !isAsleep() && l ? `${l}/${m}` : ""; $("#cnt").classList.toggle("full", l>=m); }
 let busy = false, chain = Promise.resolve(), pending = 0;
@@ -405,7 +409,10 @@ async function respond(msg, a, sense, feel){
   if (set.pendingQ) S.mem.pendingQ = { ...set.pendingQ, t: now() };
   if (set.insight && insight) S.sparks["ins_"+insight.x] = 1;
   if (set.praise && !S.sparks["praise_"+set.praise]){ S.sparks["praise_"+set.praise] = 1; cap = `ha imparato da te quando si dice «${set.praise}»`; }
-  if (r.src === "rete"){ ripple(.35, 55); if (!cap && rnd() < .25) cap = "questa frase non l'hai mai scritta tu"; }
+  if (r.src === "rete"){ ripple(.35, 55);
+    const c = net && net.cands && net.cands.find(c => c.x === r.x), lib = c && c.libro && c.libro.length ? c.libro : null;
+    if (!cap && lib) cap = `parole che ha studiato da solo: ${lib.slice(0, 3).join(", ")}`;
+    else if (!cap && rnd() < .25) cap = "questa frase non l'hai mai scritta tu"; }
   if (r.src === "senso" && a.irony && !S.sparks.ironyCap){ S.sparks.ironyCap = 1; cap = "ha capito che era ironia"; }
   await say(r.x, { glyph:r.glyph, emo:r.emo, raw:r.raw, cap, src:r.src });
   // se non è sicuro di cosa provi, te lo chiede: la tua risposta diventa una lezione
@@ -476,7 +483,8 @@ async function dream({ maxMs = Infinity, force = false, catchup = false } = {}){
   while (Date.now() - t0 < maxMs && (force || catchup || isAsleep()) && !document.hidden && !wakingUp){
     const ms = catchup ? 700 : 350;
     const r = await nucleo.impara(ms);
-    E.dreamMs = (E.dreamMs || 0) + ms * (catchup ? 6 : 1);         // al recupero il tempo è compresso
+    if (r && r.soloUso){ if (catchup) break; }                     // rete troppo grande per il telefono: la allena il server
+    else E.dreamMs = (E.dreamMs || 0) + ms * (catchup ? 6 : 1);    // al recupero il tempo è compresso
     if (r && r.loss != null){ if (first == null) first = r.loss;
       setCap(`${catchup ? "riordina i sogni" : "sogna"} · neuroni ${r.H} · confusione ${r.loss.toFixed(2)}${first ? ` (era ${first.toFixed(2)})` : ""}`); }
     if (!catchup && Date.now() - lastLine > 3200){ lastLine = Date.now(); showDreamLine(p); }
@@ -560,6 +568,68 @@ function showMirror(){
   <div class="row"><span>messaggi con emoji</span><span>${Math.round(u.emojiMsgs/Math.max(1,u.msgs)*100)}%</span></div>`);
 }
 
+/* ================= STUDIO =================
+   Mentre dorme, il server dei sogni lo fa studiare (nucleo/studio.js): Wikipedia, Wikizionario, Wikibooks,
+   Wikiversità, Wikisource e i link che gli dai. Qui: le tue richieste, le risposte e le scoperte da raccontare. */
+const lowerFirst = x => x ? x.charAt(0).toLowerCase() + x.slice(1) : x;
+function addStudy(r){
+  const L = S.mem.studia, k = String(r.x).toLowerCase();
+  if (!L.some(q => String(q.x).toLowerCase() === k && !q.fatto)) L.push({ ...r, t: now() });
+  if (L.length > 30) L.splice(0, L.length - 30); save();
+}
+function findDiscovery(q){
+  const k = B.deacc(q.toLowerCase().trim()), ks = k.slice(0, Math.max(4, k.length - 1));
+  const D = S.mem.scoperte.slice().reverse(), lo = x => B.deacc(String(x).toLowerCase());
+  return D.find(s => lo(s.argomento) === k) || D.find(s => lo(s.argomento).startsWith(ks) || k.startsWith(lo(s.argomento))) || D.find(s => lo(s.x).split(/\W+/).slice(0, 6).some(w => w.length > 3 && w.startsWith(ks)));
+}
+function studyReply(msg, a){
+  const low = (a.low || msg.toLowerCase()).trim(), url = msg.match(/https?:\/\/[^\s]+/);
+  if (url){ addStudy({ k:"link", x:url[0] }); return { x: pick(["me lo leggo stanotte, mentre dormo","lo studio quando dormo. poi ti racconto","grazie. lo leggerò mentre dormo"]), cap:"lo studierà sul server mentre dorme" }; }
+  let m = low.match(/^(?:puoi |potresti |dai |ora )?(?:studia|studiare|studiati|impara|imparare|informati(?: su)?|leggi|leggiti|approfondisci)\s+(?:(?:qualcosa|tutto|un po')\s+)?(?:(?:su|sul|sullo|sulla|sui|sugli|sulle|di|del|dello|della|dei|degli|delle)\s+)?(.{2,60}?)[.!?]*$/);
+  if (m){ const x = m[1].replace(/^(il|lo|la|i|gli|le|l'|un|una|uno)\s+/, "").replace(/^l'/, "").trim();
+    if (x.split(" ").length <= 6){ addStudy({ k:"argomento", x }); return { x: pick([`va bene. stanotte studio ${x}`,`ok. quando dormo studio ${x}`]), cap:"lo cercherà da solo su Wikipedia, Wikibooks, Wikiversità e Wikisource mentre dorme" }; } }
+  if (/(cosa|che) (hai|stai) (studiato|imparato|scoperto|studiando|leggendo|letto)|cosa studi\b/.test(low)){
+    const D = S.mem.scoperte.slice(-3).reverse(), st = S.mem.studio;
+    if (!D.length) return { x: "ancora niente. studio quando dormo", cap: S.netUp ? "il server lo farà studiare al prossimo sonno" : "studia sul server mentre dorme: serve che la rete sia stata caricata almeno una volta" };
+    D.forEach(d => d.detta = 1);
+    const titles = D.map(d => d.argomento.toLowerCase()), last = D[0];
+    return { x: `ho studiato ${titles.length > 1 ? titles.slice(0, -1).join(", ") + " e " + titles[titles.length-1] : titles[0]}. di ${titles[0]} ho scoperto che ${lowerFirst(last.x)}`, cap: `fonte: ${last.fonte}${st && st.libro ? ` · sta leggendo ${st.libro}` : ""}` };
+  }
+  m = low.match(/(?:cosa sai (?:di|del|dello|della|dei|degli|delle|sul|sullo|sulla|sui|su)|che cos'è|cos'è|cosa è|chi è|chi era|cosa sono|che cosa sono|parlami (?:di|del|dello|della|dei|degli|delle))\s+(?:il |lo |la |i |gli |le |l'|un |una )?([a-zàèéìòù' ]{2,40}?)\s*\??$/);
+  if (m){ const q = m[1].trim(), d = findDiscovery(q);
+    if (d){ d.detta = 1; return { x: lowerFirst(d.x), cap: `l'ha studiato da solo · ${d.fonte}` }; }
+    addStudy({ k:"argomento", x:q });   // non lo sa: lo studierà
+    if (/^cosa sai|^parlami/.test(low)) return { x: `di ${q} non so ancora niente. lo studio stanotte`, emo:"curious" };
+  }
+  return null;
+}
+async function tellDiscovery(){
+  const nuove = S.mem.scoperte.filter(x => !x.detta); if (!nuove.length) return false;
+  const d = nuove[nuove.length-1]; d.detta = 1;
+  const intro = pick(["mentre dormivo ho studiato", "stanotte ho studiato", "sai? ho studiato"]);
+  await say(`${intro} ${d.argomento.toLowerCase()}. ho scoperto che ${lowerFirst(d.x)}`, { emo:"curious", raw:true, src:"studio",
+    cap: `fonte: ${d.fonte}${d.perche ? " · " + d.perche : ""}${nuove.length > 1 ? ` · altre ${nuove.length-1} nella scheda studio` : ""}` });
+  save(); render(); return true;
+}
+function showStudy(){
+  const st = S.mem.studio, D = S.mem.scoperte.slice().reverse(), R = S.mem.studia.slice().reverse(), srv = S.energy.srv;
+  D.forEach(d => d.detta = 1); save(); render();
+  const N = v => Number(v || 0).toLocaleString("it-IT");
+  const host = u => { try { return new URL(u).hostname; } catch (e){ return ""; } };
+  openSheet("studio", `<p class="muted">mentre dorme studia da solo, sul server dei sogni: Wikipedia, Wikizionario, Wikibooks, Wikiversità, Wikisource e i link che gli dai. scrivigli «studia …» o incolla un link.</p>
+    ${st ? `<div class="row"><span>pagine lette</span><span class="num">${N(st.pagine)}</span></div>
+    <div class="row"><span>frasi studiate</span><span class="num">${N(st.frasi)}</span></div>
+    <div class="row"><span>ultima sessione</span><span>${dstr(st.t)} · ${hhmm(st.t)}</span></div>
+    <div class="row"><span>prossima materia</span><span>${esc(st.prossima || "—")}</span></div>
+    ${st.libro ? `<div class="row"><span>sta leggendo</span><span>${esc(st.libro)}</span></div>` : ""}
+    ${Object.keys(st.materie || {}).length ? `<h3 class="sub">materie</h3>${Object.entries(st.materie).map(([m, v]) => `<div class="row"><span>${esc(m)}</span><span>${esc(v)}</span></div>`).join("")}` : ""}
+    ${(st.curiosita || []).length ? `<h3 class="sub">curiosità per le prossime notti</h3><p class="muted">${st.curiosita.map(esc).join(" · ")}</p>` : ""}`
+    : `<p class="muted">non ha ancora studiato. succede sul server mentre dorme, dalla fase «frase».</p>`}
+    ${srv ? `<div class="row"><span>rete dopo l'ultimo sonno</span><span>${N(srv.H)} neuroni · ${N(srv.L || 1)} strati · ${N(srv.params)} parametri</span></div>` : ""}
+    ${R.length ? `<h3 class="sub">le tue richieste</h3>${R.map(q => `<div class="row"><span>${esc(q.k === "link" ? host(q.x) || q.x : q.x)}</span><span>${q.fatto ? "studiato · " + dstr(q.fatto) : "stanotte"}</span></div>`).join("")}` : ""}
+    <h3 class="sub">scoperte</h3>${D.length ? D.map(d => `<div class="entry"><time>${dstr(d.t)} · ${esc(d.argomento)} · ${d.url ? `<a href="${esc(d.url)}" target="_blank" rel="noopener">${esc(d.fonte)}</a>` : esc(d.fonte)}</time><div>${esc(d.x)}</div>${d.perche ? `<div class="muted">${esc(d.perche)}</div>` : ""}</div>`).join("") : `<p class="muted">ancora nessuna.</p>`}`);
+}
+
 /* ================= ASSENZA ================= */
 async function welcome(){
   const t = now(), last = S.lastSeen, el = last ? t - last : 0, p = phase();
@@ -592,7 +662,9 @@ async function welcome(){
   await checkPhase();
   if (!S.name) return;
   if (el < 20*60e3 && last){ setEmo("happy", 1500); save(); return; }
-  if (p>=3 && S.hurt>.35) await say(B.pickTemplate(ctx,"hurtback"), {emo:"hurt", raw:true});
+  const told = p>=3 && await tellDiscovery();
+  if (told) {}
+  else if (p>=3 && S.hurt>.35) await say(B.pickTemplate(ctx,"hurtback"), {emo:"hurt", raw:true});
   else if (el > 2*DAY) await (p>=2 ? say(B.pickTemplate(ctx,"absenceLong")||"...", {emo:"sad", raw:true}) : say(pick(G.greet), {glyph:true, emo:"sad"}));
   else await (p>=2 ? say(B.pickTemplate(ctx,"greet")||"ciao", {emo:"happy"}) : say(pick(G.greet), {glyph:true, emo:"happy"}));
   // si ricorda degli eventi che gli hai raccontato
@@ -749,6 +821,7 @@ $("#bar").addEventListener("submit", e=>{
         declared = { caught: !!(lastC && /come no|sul serio|ironi|scherz|bello eh/.test(lastC.x)) };
       }
     }
+    const studyAns = !confirmed && !declared && phase() >= 3 ? studyReply(msg, a) : null;
     const newW = B.learn(S, msg, a, now()); updateTraits(a);
     // etichette automatiche (emoji, segnali) e ricordo dell'umore per capire il carattere
     const lab = etichetta(msg, a, AFFETTI);
@@ -760,6 +833,7 @@ $("#bar").addEventListener("submit", e=>{
     if (hit){ oracleP = null; await revealOracle(); await say(phase()>=2 ? "lo sapevo" : "!", {emo:"happy", raw:true, cap:"sapeva cosa avresti scritto"}); }
     else if (declared){ oracleP = null; hideOracle();
       await say(declared.caught ? "ahah. l'avevo capito" : "ah! ci sono cascato. me lo segno", { emo: declared.caught ? "smirk" : "surprised", raw:true, src:"chiede", cap:"sta imparando quando sei ironico" }); }
+    else if (studyAns){ oracleP = null; hideOracle(); await say(studyAns.x, { emo: studyAns.emo || "curious", raw:true, src:"studio", cap: studyAns.cap || "" }); }
     else if (confirmed){ oracleP = null; hideOracle();
       const st = S.mem.ironyStats, accTxt = st && st.hist.length >= 3 ? ` · indovina il tuo tono ${Math.round(st.hist.reduce((x,y)=>x+y,0)/st.hist.length*100)}% delle volte` : "";
       let line, emo = "happy";
@@ -835,7 +909,9 @@ function closeSheet(){ $("#sheet").classList.remove("on"); mapRun = false; }
 $("#sheet").addEventListener("click", e=>{ if (e.target.id==="sheet") closeSheet(); });
 function showWords(){
   const ws = contentWords(1).sort((a,b)=>S.words[a].f-S.words[b].f);
-  openSheet(`${ws.length} parole`, `<p class="muted">tutte quelle che conosce. le ha imparate da te.</p><div class="words">${ws.slice(-400).reverse().map(w=>`<span>${esc(w)}<small>${S.words[w].c}×${S.defs[w]?" · sa cos'è":""}</small></span>`).join("")}</div>`);
+  const lib = STUDIATE.filter(w => w.length > 3 && !B.STOP.has(w) && !S.words[w]).sort();
+  openSheet(`${ws.length} parole`, `<p class="muted">tutte quelle che gli hai insegnato tu.</p><div class="words">${ws.slice(-400).reverse().map(w=>`<span>${esc(w)}<small>${S.words[w].c}×${S.defs[w]?" · sa cos'è":""}</small></span>`).join("")}</div>
+    ${lib.length ? `<h3 class="sub">dai libri · ${lib.length}</h3><p class="muted">parole che ha imparato studiando da solo. le usa, ma sa che non vengono da te.</p><div class="words lib">${lib.slice(0, 300).map(w=>`<span>${esc(w)}</span>`).join("")}</div>` : ""}`);
 }
 function showDiary(){
   S.diaryUnread = 0; save(); render();
@@ -857,17 +933,20 @@ function showLog(){
 let mapRun = false;
 async function showMind(){
   const i = nucleo.info, last = i && i.last;
-  const grow = i && i.growth && i.growth.length ? [i.growth[0].from, ...i.growth.map(g=>g.to)].join(" → ") : (i ? String(i.H) : "—");
+  const gw = i && i.growth ? i.growth.filter(g => g.to !== g.from) : [];
+  const grow = gw.length ? [gw[0].from, ...gw.map(g=>g.to)].join(" → ") : (i ? String(i.H) : "—");
   const N = v => v == null ? "—" : Number(v).toLocaleString("it-IT");
-  openSheet("mente", `<p class="muted">una rete neurale ricorrente nata vuota e cresciuta solo con te, qui sul telefono (e quando dorme, anche ad app chiusa). nessuna IA esterna, nessuna libreria: ogni riga di matematica è scritta a mano.</p>
+  openSheet("mente", `<p class="muted">una rete neurale ricorrente nata vuota, cresciuta con te e con quello che studia da solo mentre dorme. nessuna IA esterna, nessuna libreria: ogni riga di matematica è scritta a mano.</p>
     <canvas id="map"></canvas><p class="muted" style="text-align:center;margin:0">le parole vicine, per lui, vogliono dire cose simili. l'ha capito da solo.</p>
     <canvas id="spark"></canvas><p class="muted" style="text-align:center;margin:0 0 6px">quanto capisce le emozioni, misurato su frasi che non ha mai visto</p>
     <div class="row"><span>neuroni</span><span class="num">${grow}</span></div>
+    <div class="row"><span>strati</span><span class="num">${N(i && (i.L || 1))}</span></div>
     <div class="row"><span>parametri</span><span class="num">${N(i && i.params)}</span></div>
+    <div class="row"><span>parole studiate da solo</span><span class="num">${N(STUDIATE.length)}</span></div>
     <div class="row"><span>comprensione emotiva</span><span class="num">${last && last.capisce != null ? Math.round(last.capisce*100)+"%" : "—"}</span></div>
     <div class="row"><span>frasi lette</span><span class="num">${N(i && i.steps)}</span></div>
     <div class="row"><span>frasi tue da cui impara</span><span class="num">${N(i && i.frasi)}</span></div>
-    <div class="row"><span>dove pensa</span><span>${nucleo.mode}</span></div>
+    <div class="row"><span>dove pensa</span><span>${nucleo.mode}${nucleo.grande ? " · troppo grande per allenarsi qui: lo allena il server" : ""}</span></div>
     <div class="row"><span>sogni ad app chiusa</span><span>${S.energy.srv ? `${dstr(S.energy.srv.t)} · ${hhmm(S.energy.srv.t)} · +${N(S.energy.srv.steps)} passi` : S.netUp ? "rete affidata al server" : "non ancora"}</span></div>
     ${phase()<3 ? `<p class="muted" style="margin-top:14px">la userà per parlare dalla fase «frase». intanto ascolta e impara a sentire.</p>` : ""}
     <button class="btn" id="mChar">come ti vede</button><button class="btn" id="mLog">ricordi</button>`);

@@ -15,6 +15,8 @@ export { etichetta, conferma, valenza } from "./etichette.js";
 export { registra, analizza } from "./carattere.js";
 
 const wait = ms => new Promise(r => setTimeout(r, ms));
+/* oltre questa taglia il telefono non allena la rete: la usa soltanto (la allena il server mentre dorme) */
+export const TRAIN_MAX = 1.5e6;
 
 /* deposito su IndexedDB (la rete può pesare qualche MB) con ripiego su localStorage */
 const store = {
@@ -55,8 +57,10 @@ export class Nucleo {
     return this.info;
   }
   emit(){ if (this.onStato) try { this.onStato(this.info); } catch (_){} }
+  get grande(){ return !!(this.info && this.info.params > TRAIN_MAX); }
   async impara(ms = 150){
     if (!this.ready) return null;
+    if (this.grande) return { ...this.info, batches: 0, soloUso: true };
     const r = await this.call("impara", { ms });
     this.info = { ...this.info, ...r };
     if (r && r.grew && this.onCresce) try { this.onCresce(r.grew, this.info); } catch (_){}
@@ -87,7 +91,9 @@ export class Nucleo {
     this.dreaming = false; await this.salva(); return r;
   }
   /* la rete come dato (per caricarla sul server che la fa sognare ad app chiusa) */
-  async esporta(){ if (!this.ready) return null; return await this.call("save"); }
+  async esporta(half = false){ if (!this.ready) return null; return await this.call("save", { half }); }
+  /* le parole che conosce dai libri (non da te) */
+  async lessico(){ if (!this.ready) return []; try { return await this.call("lessico"); } catch (e){ return []; } }
   /* sostituisce la rete con una allenata altrove (il server dei sogni) */
   async importa(saved, { corpus = [], labels = [], seed = 7 } = {}){
     if (!this.ready || !saved) return null;

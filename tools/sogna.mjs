@@ -1,21 +1,27 @@
-/* impronta · sogni sul server
-   Ogni ora GitHub Actions esegue questo script: allena le reti dei compagni che dormono
-   (o che si sono addormentati senza finire di sognare) con lo STESSO codice di nucleo/,
-   così la mente cresce anche ad app chiusa. Il telefono ritrova la rete allenata al ritorno.
-
+/* impronta · sogni e studio sul server
+   Ogni ora GitHub Actions esegue questo script per i compagni che dormono (o che si sono addormentati
+   senza finire di sognare):
+     1. STUDIA (dalla fase "frase"): Wikipedia, Wikizionario, Wikibooks, Wikiversità, Wikisource, i tuoi link
+     2. SOGNA: allena la rete con lo stesso codice di nucleo/, sulle tue frasi e sulle letture;
+        qui la rete può crescere molto più che sul telefono (più neuroni, più strati)
+     3. lascia le scoperte da raccontarti e un sogno nel diario
    Dati su Firebase RTDB:
-     impronta/<ID>       stato dell'app (leggiamo; aggiorniamo solo pochi campi con update)
-     impronta_nets/<ID>  { meta: { at, steps, H, by }, net: "<JSON di Maestro.save()>" }
-   La rete è salvata come stringa JSON: Firebase cancella array vuoti e null e
-   rinumera gli array, così invece torna identica byte per byte. */
-import { Maestro } from "../nucleo/maestro.js";
+     impronta/<ID>        stato dell'app (leggiamo; aggiorniamo solo pochi campi con update)
+     impronta_nets/<ID>   { meta: { at, steps, H, L, by, parts }, net: "<json>" | parts: { 0: "…", 1: "…" } }
+     impronta_study/<ID>  { stato: "<json>", letture: "<json>" }   (solo il server lo usa)
+   Tutto come stringhe JSON: Firebase toglie array vuoti e null e rinumera gli array. */
+import { Maestro, SERVER } from "../nucleo/maestro.js";
 import { AFFETTI } from "../nucleo/rete.js";
+import { studia, riassunto } from "../nucleo/studio.js";
+import { impacchetta, spacchetta } from "../nucleo/pacco.js";
 import { NEED, STOP, DAY } from "../brain.js";
 
 const arr = v => Array.isArray(v) ? v : v ? Object.values(v) : [];
 const strSeed = s => { let h = 2166136261; for (const c of s){ h ^= c.charCodeAt(0); h = Math.imul(h, 16777619); } return h >>> 0; };
 const COMPRESS = 6;          // come il recupero sul telefono: il tempo di sogno sul server vale 6 volte
 const ACTIVE = 3*60e3;       // se il telefono ha salvato da poco è aperto: allena lui, non noi
+const MAXL = 20000;          // frasi studiate tenute per allenarsi (le più recenti)
+const parse = (s, d) => { try { return typeof s === "string" ? JSON.parse(s) : s ?? d; } catch (e){ return d; } };
 
 export function fase(S, now){
   let k = 0; for (const w in S.words || {}) if (!STOP.has(w) && w.length > 2) k++;
@@ -32,35 +38,62 @@ export function deveSognare(S, now){
   return dorme || debito;
 }
 /* Firebase restituisce gli array come oggetti {0:…,3:…}: li ricompongo lunghi quanto le emozioni */
-const vettore = (v, d) => AFFETTI.map((_, i) => { const x = v && v[i]; return Number.isFinite(+x) && x !== null && x !== undefined ? +x : d; });
+const vettore = (v, d) => AFFETTI.map((_, i) => { const x = v && v[i]; return x !== null && x !== undefined && Number.isFinite(+x) ? +x : d; });
 const labelsDi = S => arr(S.mem && S.mem.labels).filter(l => l && l.x).map(l => ({ ...l, l: vettore(l.l, 0), m: vettore(l.m, 0) }));
 
-/* il cuore, indipendente da Firebase: adapter = { stati(), rete(id), aggiorna(id, patch), salvaRete(id, dati) } */
-export async function sognaTutti(ad, { budgetMs = 8*60e3, perMs = 75e3, now = Date.now, log = console.log } = {}){
+/* il cuore, indipendente da Firebase:
+   adapter = { stati(), rete(id), aggiorna(id, patch), salvaRete(id, nodo), studio?(id), salvaStudio?(id, dati) }
+   fetch = per studiare (null = niente studio) */
+export async function sognaTutti(ad, { budgetMs = 8*60e3, perMs = 75e3, studioMs = 45e3, fetch = null, now = Date.now, log = console.log } = {}){
   const t0 = now(), stati = await ad.stati() || {}, fatti = [];
   const coda = Object.entries(stati).filter(([id, S]) => id.length === 16 && deveSognare(S, now()))
     .sort((a, b) => (b[1].energy.need - (b[1].energy.dreamMs||0)) - (a[1].energy.need - (a[1].energy.dreamMs||0)));
   log(`compagni: ${Object.keys(stati).length} · da far sognare: ${coda.length}`);
   for (const [id, S] of coda){
-    const resta = budgetMs - (now() - t0); if (resta < 5000) { log("tempo finito, gli altri al prossimo giro"); break; }
+    let resta = budgetMs - (now() - t0); if (resta < 5000) { log("tempo finito, gli altri al prossimo giro"); break; }
     const R = await ad.rete(id);
-    if (!R || !R.net){ log(`${id.slice(0,4)}…: nessuna rete caricata dal telefono, salto`); continue; }
-    let saved; try { saved = typeof R.net === "string" ? JSON.parse(R.net) : R.net; } catch (e){ log(`${id.slice(0,4)}…: rete illeggibile`); continue; }
-    const E = S.energy, debito = Math.max(0, (E.need || 30000) - (E.dreamMs || 0));
-    const ms = Math.min(perMs, resta - 3000, Math.max(8000, debito / COMPRESS));
+    let saved = null; try { saved = spacchetta(R); } catch (e){ log(`${id.slice(0,4)}…: rete illeggibile`); continue; }
+    if (!saved){ log(`${id.slice(0,4)}…: nessuna rete caricata dal telefono, salto`); continue; }
+    const E = S.energy, p = fase(S, now()), tag = id.slice(0,4) + "…";
+
+    // 1) studio
+    let letture = [], st = null, scoperte = [], fatte = [];
+    if (p >= 3 && ad.studio){
+      const prev = (await ad.studio(id)) || {};
+      letture = arr(parse(prev.letture, []));
+      if (fetch){
+        log(`${tag}: studia`);
+        const r = await studia({ fetch, S, stato: parse(prev.stato, null), budgetMs: Math.min(studioMs, resta/3), ora: now, log });
+        st = r.stato; scoperte = r.scoperte; fatte = r.fatte;
+        letture = [...letture, ...r.letture]; if (letture.length > MAXL) letture = letture.slice(-MAXL);
+        await ad.salvaStudio(id, { stato: JSON.stringify(st), letture: JSON.stringify(letture) });
+      }
+    }
+    resta = budgetMs - (now() - t0);
+
+    // 2) sogno: allenamento
+    const debito = Math.max(0, (E.need || 30000) - (E.dreamMs || 0));
+    const ms = Math.max(2000, Math.min(perMs, resta - 3000, letture.length ? perMs : Math.max(8000, debito / COMPRESS)));
     const M = new Maestro(), c = arr(S.mem && S.mem.corpus);
-    M.init({ saved, corpus: c, labels: labelsDi(S), seed: strSeed(id) });
-    const s0 = M.net.steps, h0 = M.net.H, ta = now(); let r = null, loss0 = null;
+    M.init({ saved, corpus: c, labels: labelsDi(S), seed: strSeed(id), letture, limiti: SERVER });
+    const s0 = M.net.steps, h0 = M.net.H, l0 = M.net.L, ta = now(); let r = null, loss0 = null;
     while (now() - ta < ms){ r = M.impara(Math.min(1500, ms - (now() - ta) + 1)); if (loss0 == null && r.loss != null) loss0 = r.loss; }
     const fatto = now() - ta, info = M.info(), at = now();
-    if (!(r && Number.isFinite(r.loss))){ log(`${id.slice(0,4)}…: l'allenamento è andato storto (perdita non valida), non salvo`); continue; }
+    if (!(r && Number.isFinite(r.loss))){ log(`${tag}: l'allenamento è andato storto (perdita non valida), non salvo`); continue; }
     const patch = {
       "energy/dreamMs": (E.dreamMs || 0) + fatto * COMPRESS,
-      "energy/srv": { t: at, steps: info.steps - s0, loss: r && r.loss != null ? +r.loss.toFixed(3) : 0, H: info.H },
+      "energy/srv": { t: at, steps: info.steps - s0, loss: +r.loss.toFixed(3), H: info.H, L: info.L, params: info.params, studiate: info.studiate },
       updatedAt: at
     };
+    // 3) cosa raccontare: scoperte, richieste esaudite, a che punto è lo studio, un sogno
+    if (scoperte.length) patch["mem/scoperte"] = [...arr(S.mem && S.mem.scoperte), ...scoperte.map(x => ({ ...x, detta: 0 }))].slice(-60);
+    if (fatte.some(f => f.fatto)){
+      const ok = new Set(fatte.filter(f => f.fatto).map(f => f.richiesta));
+      patch["mem/studia"] = arr(S.mem && S.mem.studia).map(q => ok.has(q.x) ? { ...q, fatto: at } : q);
+    }
+    if (st) patch["mem/studio"] = riassunto(st, at);
     let sogno = null;
-    if (fase(S, at) >= 3 && !E.dreamt){
+    if (p >= 3 && !E.dreamt){
       // con poche frasi e tanto allenamento la rete le ripete a memoria: allora sogna "più caldo"
       for (const temp of [.8, 1.1, 1.4]){ sogno = (M.parla({ seeds: [], n: 40, temp })[0] || {}).x || null; if (sogno) break; }
       if (sogno){
@@ -68,11 +101,12 @@ export async function sognaTutti(ad, { budgetMs = 8*60e3, perMs = 75e3, now = Da
         patch.diary = diary.slice(-40); patch.diaryUnread = (S.diaryUnread || 0) + 1; patch["energy/dreamt"] = 1;
       }
     }
-    await ad.salvaRete(id, { meta: { at, steps: info.steps, H: info.H, by: "srv" }, net: JSON.stringify(M.save()) });
+    await ad.salvaRete(id, impacchetta(M.save(true), { at, steps: info.steps, H: info.H, L: info.L, params: info.params, by: "srv" }));
     await ad.aggiorna(id, patch);
-    const riga = { id, ms: fatto, steps: info.steps - s0, H: info.H, crescita: info.H > h0 ? `${h0}→${info.H}` : null, loss: [loss0, r && r.loss], sogno };
+    const riga = { id, ms: fatto, steps: info.steps - s0, H: info.H, L: info.L, crescita: info.H > h0 || info.L > l0 ? `${h0}×${l0} → ${info.H}×${info.L}` : null,
+      loss: [loss0, r.loss], sogno, letture: letture.length, scoperte: scoperte.map(s => s.argomento) };
     fatti.push(riga);
-    log(`${id.slice(0,4)}…: ${(fatto/1000).toFixed(0)} s · +${riga.steps} passi · neuroni ${info.H}${riga.crescita ? " (cresciuto " + riga.crescita + ")" : ""} · confusione ${loss0?.toFixed(2)} → ${r?.loss?.toFixed(2)}${sogno ? ` · «${sogno}»` : ""}`);
+    log(`${tag}: sogno ${(fatto/1000).toFixed(0)} s · +${riga.steps} passi · neuroni ${info.H} · strati ${info.L} · ${info.params} parametri${riga.crescita ? " (cresciuto " + riga.crescita + ")" : ""} · confusione ${loss0?.toFixed(2)} → ${r.loss.toFixed(2)} · letture ${letture.length}${sogno ? ` · «${sogno}»` : ""}`);
   }
   return fatti;
 }
@@ -90,7 +124,9 @@ async function firebase(){
       async stati(){ return (await db.ref("impronta").get()).val(); },
       async rete(id){ return (await db.ref("impronta_nets/" + id).get()).val(); },
       aggiorna(id, patch){ return db.ref("impronta/" + id).update(patch); },
-      salvaRete(id, dati){ return db.ref("impronta_nets/" + id).set(dati); }
+      salvaRete(id, nodo){ return db.ref("impronta_nets/" + id).set(nodo); },
+      async studio(id){ return (await db.ref("impronta_study/" + id).get()).val(); },
+      salvaStudio(id, dati){ return db.ref("impronta_study/" + id).set(dati); }
     },
     chiudi: () => admin.app().delete()
   };
@@ -103,7 +139,7 @@ if (main){
     process.exit(0);
   }
   const { adapter, chiudi } = await firebase();
-  try { await sognaTutti(adapter, { budgetMs: +(process.env.BUDGET_MS || 8*60e3) }); }
+  try { await sognaTutti(adapter, { budgetMs: +(process.env.BUDGET_MS || 8*60e3), fetch: globalThis.fetch }); }
   finally { await chiudi(); }
   process.exit(0);
 }
