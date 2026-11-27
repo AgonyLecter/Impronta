@@ -43,7 +43,7 @@ function blank(id){ return { v:2, id, born:0, name:"", userName:"", firstWord:""
   phase:0, words:{}, phrases:{}, quotes:[], likes:[], dislikes:[], defs:{}, self:{is:[],likes:[]}, facts:{},
   traits:{calore:0,ironia:0,curiosita:0,coraggio:0,calma:0,malinconia:0},
   user:{msgs:0,chars:0,emoji:{},emojiMsgs:0,lower:0,excl:0,dot:0,abbr:{},hours:Array(24).fill(0),firstLens:[],lens:[],typing:{n:0,cps:0,del:0}},
-  mem:{feel:[],events:[],people:{},topics:{},corpus:[],ask:null,openers:[],react:{},reward:{},labels:[],mood:[],pendingQ:null,confirm:null},
+  mem:{feel:[],events:[],people:{},topics:{},corpus:[],ask:null,openers:[],react:{},reward:{},labels:[],mood:[],pendingQ:null,confirm:null,ironyLex:{},ironyStats:{asked:0,hist:[]}},
   log:[], diary:[], diaryUnread:0, glyphs:[], revealed:false,
   energy:{used:0,sleepUntil:0}, lastSeen:0, sessions:0, sparks:{}, hurt:0, promise:0, litSeen:0, sound:true, updatedAt:0 }; }
 const arr = v => Array.isArray(v) ? v : v ? Object.values(v) : [];
@@ -55,7 +55,8 @@ function normalize(s, id){
   if (o.user.hours.length < 24) o.user.hours = Array(24).fill(0).map((_,i)=>o.user.hours[i]||0);
   o.user.typing = Object.assign({n:0,cps:0,del:0}, o.user.typing||{});
   for (const k of ["feel","events","corpus","openers","labels","mood"]) o.mem[k] = arr(o.mem[k]);
-  for (const k of ["people","topics","react","reward"]) o.mem[k] = o.mem[k]||{};
+  for (const k of ["people","topics","react","reward","ironyLex"]) o.mem[k] = o.mem[k]||{};
+  o.mem.ironyStats = Object.assign({asked:0,hist:[]}, o.mem.ironyStats||{}); o.mem.ironyStats.hist = arr(o.mem.ironyStats.hist);
   o.self = Object.assign({is:[],likes:[]}, o.self||{}); o.self.is = arr(o.self.is); o.self.likes = arr(o.self.likes); o.facts = o.facts||{};
   o.mem.labels.forEach(l => { l.l = arr(l.l); l.m = arr(l.m); });
   // migrazione: il corpus della voce nasce dalle frasi già dette
@@ -276,8 +277,9 @@ function render(){
   const b1=$("#bWords"), b2=$("#bDiary"), b3=$("#bMind"); if(b1) b1.onclick=showWords; if(b2) b2.onclick=showDiary; if(b3) b3.onclick=showMind;
 }
 function updCount(){ const l=inp.value.length, m=inp.maxLength; $("#cnt").textContent = S.born && !isAsleep() && l ? `${l}/${m}` : ""; $("#cnt").classList.toggle("full", l>=m); }
-let busy = false, chain = Promise.resolve();
-const queue = fn => (chain = chain.then(fn).catch(e=>console.error(e)));
+let busy = false, chain = Promise.resolve(), pending = 0;
+const queue = fn => { pending++; return (chain = chain.then(fn).catch(e=>console.error(e)).finally(()=>pending--)); };
+window.__impronta = { get idle(){ return !busy && pending === 0; } }; // usato dai test automatici
 
 /* scrive lettera per lettera, con la bocca che segue le vocali */
 async function typeOut(text){
@@ -372,8 +374,9 @@ async function respond(msg, a, sense, feel){
   if (r.src === "senso" && a.irony && !S.sparks.ironyCap){ S.sparks.ironyCap = 1; cap = "ha capito che era ironia"; }
   await say(r.x, { glyph:r.glyph, emo:r.emo, raw:r.raw, cap, src:r.src });
   // se non è sicuro di cosa provi, te lo chiede: la tua risposta diventa una lezione
-  if (feel && feel._incerto && p >= 3 && ["ironia","tristezza","rabbia","paura"].includes(feel._top) && !S.mem.confirm && rnd() < .45 && r.src !== "senso"){
-    const Q = { ironia:"stai scherzando?", tristezza:"sei triste?", rabbia:"sei arrabbiato?", paura:"hai paura?" };
+  if (feel && feel._incerto && p >= 3 && ["tristezza","rabbia","paura"].includes(feel._top) && !S.mem.confirm && rnd() < .35 && r.src !== "senso" && S.user.msgs - (S.mem.lastAskMsg ?? -99) >= 3){
+    S.mem.lastAskMsg = S.user.msgs;
+    const Q = { tristezza:"sei triste?", rabbia:"sei arrabbiato?", paura:"hai paura?" };
     S.mem.confirm = { k: feel._top, x: msg, t: now() };
     await say(Q[feel._top], { emo:"curious", raw:true, src:"chiede" });
   }
@@ -598,12 +601,36 @@ $("#bar").addEventListener("submit", e=>{
     const feel = await nucleo.senti(msg);
     // risposta a "stai scherzando?" / "sei triste?": diventa una lezione fortissima
     let confirmed = null;
-    if (S.mem.confirm && now() - S.mem.confirm.t < 10*60e3 && (a.yes || a.no)){
-      const c = S.mem.confirm, L = conferma(c.k, a.yes, AFFETTI);
-      nucleo.osserva(c.x, L); S.mem.labels.push({ x: B.tokenize(c.x).join(" "), l: L.lab, m: L.mask, w: L.w }); if (S.mem.labels.length > 300) S.mem.labels.shift();
-      confirmed = { k: c.k, yes: a.yes };
+    if (S.mem.confirm && now() - S.mem.confirm.t < 10*60e3){
+      const c = S.mem.confirm;
+      const yes = c.k === "ironia" ? B.parseIronyAnswer(a, c.q || { yes:true }) : (a.yes ? true : a.no ? false : null);
+      if (yes !== null){
+        const L = conferma(c.k, yes, AFFETTI);
+        nucleo.osserva(c.x, L); S.mem.labels.push({ x: B.tokenize(c.x).join(" "), l: L.lab, m: L.mask, w: L.w }); if (S.mem.labels.length > 300) S.mem.labels.shift();
+        if (c.k === "ironia"){
+          B.learnIrony(S, B.analyze(c.x), yes);
+          const st = S.mem.ironyStats || (S.mem.ironyStats = { asked:0, hist:[] });
+          st.asked++; st.hist.push(c.guess === yes ? 1 : 0); if (st.hist.length > 30) st.hist.shift();
+          // dalla risposta capisce anche cosa ti piace
+          if (yes){ const ca = B.analyze(c.x); for (const l of (ca.likes || [])){ S.likes = S.likes.filter(x=>x!==l); if (!S.dislikes.includes(l)) S.dislikes.push(l); } }
+          if (c.topic){ const tn = B.topicNoun(c.topic).replace(/^(il|lo|la|i|gli|le|l') ?/, ""); if (yes && !S.dislikes.includes(tn)){ S.dislikes.push(tn); S.likes = S.likes.filter(x=>x!==tn); } if (!yes && c.pos && !S.likes.includes(tn)){ S.likes.push(tn); S.dislikes = S.dislikes.filter(x=>x!==tn); } }
+        }
+        confirmed = { k: c.k, yes, topic: c.topic, guess: c.guess };
+      }
     }
     S.mem.confirm = null;
+    let declared = null;
+    if (!confirmed && B.JOKE_DECL.test(a.low)){
+      const prevU = S.log.slice(0, -1).reverse().find(l => l.w === "u");
+      if (prevU && now() - prevU.t < 5*60e3){
+        const pa = B.analyze(prevU.x), L = conferma("ironia", true, AFFETTI);
+        nucleo.osserva(prevU.x, L); S.mem.labels.push({ x: B.tokenize(prevU.x).join(" "), l: L.lab, m: L.mask, w: L.w });
+        B.learnIrony(S, pa, true);
+        for (const l of (pa.likes || [])){ S.likes = S.likes.filter(x=>x!==l); if (!S.dislikes.includes(l)) S.dislikes.push(l); }
+        const lastC = S.log.slice(0, -1).reverse().find(l => l.w === "c");
+        declared = { caught: !!(lastC && /come no|sul serio|ironi|scherz|bello eh/.test(lastC.x)) };
+      }
+    }
     const newW = B.learn(S, msg, a, now()); updateTraits(a);
     // etichette automatiche (emoji, segnali) e ricordo dell'umore per capire il carattere
     const lab = etichetta(msg, a, AFFETTI);
@@ -613,10 +640,38 @@ $("#bar").addEventListener("submit", e=>{
     S.energy.used++;
     if (newW.length && phase()>=1) setHint(`ha imparato: ${newW.slice(0,3).join(", ")}`);
     if (hit){ oracleP = null; await revealOracle(); await say(phase()>=2 ? "lo sapevo" : "!", {emo:"happy", raw:true, cap:"sapeva cosa avresti scritto"}); }
+    else if (declared){ oracleP = null; hideOracle();
+      await say(declared.caught ? "ahah. l'avevo capito" : "ah! ci sono cascato. me lo segno", { emo: declared.caught ? "smirk" : "surprised", raw:true, src:"chiede", cap:"sta imparando quando sei ironico" }); }
     else if (confirmed){ oracleP = null; hideOracle();
-      const W = { ironia:"ironia", tristezza:"tristezza", rabbia:"rabbia", paura:"paura" }[confirmed.k];
-      await say(confirmed.yes ? (confirmed.k==="ironia" ? "ahah. lo sapevo" : "mi dispiace. sono qui") : "ok. ora ho capito meglio", { emo: confirmed.yes && confirmed.k!=="ironia" ? "sad" : "happy", raw:true, src:"chiede", cap:`ha imparato qualcosa sulla ${W}` }); }
-    else { oracleP = null; hideOracle(); await respond(msg, a, sense, feel); }
+      const st = S.mem.ironyStats, accTxt = st && st.hist.length >= 3 ? ` · indovina il tuo tono ${Math.round(st.hist.reduce((x,y)=>x+y,0)/st.hist.length*100)}% delle volte` : "";
+      let line, emo = "happy";
+      if (confirmed.k === "ironia"){
+        const right = confirmed.guess === confirmed.yes;
+        if (confirmed.yes) line = confirmed.topic ? (right ? `lo sapevo. allora ${B.notLike(confirmed.topic)}. lo ricorderò` : `ah. allora ${B.notLike(confirmed.topic)}. lo ricorderò`) : (right ? "ahah. lo sapevo" : "ahah. ci sono cascato");
+        else line = confirmed.topic ? `allora ti piace davvero. strano. ma bello` : (right ? "lo pensavo. bene" : "ok. ora ho capito meglio");
+        emo = confirmed.yes ? "smirk" : "happy";
+      } else { line = confirmed.yes ? "mi dispiace. sono qui" : "ok. ora ho capito meglio"; emo = confirmed.yes ? "sad" : "happy"; }
+      await say(line, { emo, raw:true, src:"chiede", cap:`sta imparando il tuo modo di scrivere${accTxt}` }); }
+    else {
+      oracleP = null; hideOracle();
+      // ironia: rete + regole + il tuo vocabolario. se è nel dubbio, chiede invece di rispondere
+      const ir = B.ironyEstimate(S, a, feel);
+      const st = S.mem.ironyStats || { hist:[] }, acc = st.hist.length >= 8 ? st.hist.reduce((x,y)=>x+y,0)/st.hist.length : .5;
+      const sinceAsk = S.user.msgs - (S.mem.lastAskMsg ?? -99);
+      const band = ir.p > .3 && ir.p < (acc > .8 ? .6 : .78);
+      const askP = st.hist.length < 10 ? .9 : Math.max(.3, 1 - acc*.7);
+      const plausible = ir.rule > 0 || (ir.pers ?? 0) > .55 || (ir.pos && (ir.net || 0) > .68);
+      if (phase() >= 2 && band && plausible && sinceAsk >= 3 && rnd() < askP){
+        const q = B.ironyQuestion(rnd);
+        S.mem.confirm = { k:"ironia", x: msg, t: now(), q, guess: ir.p >= .5, topic: ir.topic, pos: ir.pos };
+        S.mem.lastAskMsg = S.user.msgs;
+        await say(q.x, { emo:"curious", raw:true, src:"chiede", cap: (st.hist.length < 2 ? "non è sicuro del tuo tono: te lo chiede per imparare" : "") });
+      } else {
+        const irV = plausible && ir.p >= .5 ? Math.max(.65, ir.p) : 0;   // nel dubbio segue l'ipotesi più probabile
+        const f2 = feel ? { ...feel, ironia: irV } : (irV ? { ironia: irV } : null);
+        await respond(msg, a, sense, f2);
+      }
+    }
     nucleo.impara(200).catch(()=>{});
     await checkPhase();
     if (S.energy.used >= ENERGY[phase()]) await sleepNow();
@@ -735,6 +790,9 @@ function showCarattere(){
   openSheet("come ti vede", `<p class="muted">non è un test: è quello che ha capito di te da ${C.n} messaggi, con le emozioni stimate dalla sua rete. più gli parli, più diventa preciso (sicurezza ${Math.round((C.traits[0]||{conf:0}).conf*100)}%).</p>
     ${C.traits.map(t => `<div class="row"><span>${t.k}<br><small class="muted">${t.why}</small></span><span style="letter-spacing:.08em;font-size:10px">${bar(t.v)}</span></div>`).join("")}
     ${C.insights.length ? `<p class="muted" style="margin-top:16px">ha notato che</p>${C.insights.map(x => `<div class="row"><span>${esc(x.x)}</span><span></span></div>`).join("")}` : ""}
+    ${(() => { const st = S.mem.ironyStats; if (!st || !st.hist.length) return ""; const acc = Math.round(st.hist.reduce((x,y)=>x+y,0)/st.hist.length*100);
+      const words = Object.entries(S.mem.ironyLex||{}).filter(([w,e]) => e.i >= 2 && e.i > e.s*2 && !B.STOP.has(w)).sort((x,y)=>y[1].i-x[1].i).slice(0,6).map(([w])=>w);
+      return `<p class="muted" style="margin-top:16px">il tuo tono</p><div class="row"><span>ti ha chiesto se eri ironico</span><span class="num">${st.asked}</span></div><div class="row"><span>quante volte aveva indovinato prima di chiedere</span><span class="num">${acc}%</span></div>${words.length ? `<div class="row"><span>le parole che usi quando sei ironico</span><span>${words.map(esc).join(", ")}</span></div>` : ""}`; })()}
     <p class="muted" style="margin-top:16px">il tuo umore, giorno per giorno</p><div>${days}</div>
     <p class="muted" style="margin-top:6px">bianco: sereno · rosso: giù</p>`);
 }

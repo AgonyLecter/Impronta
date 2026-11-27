@@ -36,7 +36,7 @@ export function innate(p){ const s = new Set(); if (p>=2) INN2.forEach(w=>s.add(
 
 /* ---------- lessici ---------- */
 const SENT = { // radice → valore
-  bene:1.2, felic:2, content:1.5, bell:1.3, fantastic:2, ador:2, grazi:1, top:1.3, fig:0, figo:1.3, figat:1.5, evviv:2, super:1.2, meglio:1, divert:1.5, sorrid:1.3, gioi:2, amor:1.5, perfett:1.5, stupend:2, wow:1.2, seren:1.3, tranquill:1, carin:1, dolc:1, entusiasm:2, rilassat:1.2, fortun:1.3, vint:1.2, promoss:2, giust:1, corrett:1, esatt:1, brillant:1.5, ottim:1.5, eccellent:2, geni:1,
+  bene:1.2, felic:2, content:1.5, bell:1.3, fantastic:2, ador:2, grazi:1, top:1.3, fig:0, figo:1.3, figat:1.5, evviv:2, super:1.2, meglio:1, divert:1.5, sorrid:1.3, gioi:2, amor:1.5, perfett:1.5, stupend:2, wow:1.2, seren:1.3, tranquill:1, carin:1, dolc:1, entusiasm:2, rilassat:1.2, fortun:1.3, vint:1.2, promoss:2, meravigli:2, magnific:1.8, splendid:1.8, adoro:2, gentilissim:1.3, giust:1, corrett:1, esatt:1, brillant:1.5, ottim:1.5, eccellent:2, geni:1,
   male:-1.3, trist:-2, stanc:-1.2, schif:-1.8, paur:-1.6, piang:-2, arrabbiat:-1.8, noi:-1.2, annoi:-1.2, ansi:-1.6, stress:-1.5, brutt:-1.3, peggi:-1.3, uff:-1, depress:-2.2, nervos:-1.5, odi:-1.8, dolor:-1.6, malat:-1.6, incub:-1.5, sfig:-1.3, pesant:-1, solitud:-1.8, preoccup:-1.4, deluss:-1.6, bocciat:-2, pers:-0.6, sbagliat:-1, litig:-1.5, mort:-1.5, agitat:-1.4, panic:-2, insonn:-1.2, ferit:-1.4
 };
 const INSULT = ["stupid","scem","idiot","inutil","cretin","muori","ti odio","fai schifo","stronz","vaffanc","coglion","sfigat","fallit","zitto","taci","deficient","imbecill","brutto mostro"];
@@ -59,7 +59,8 @@ export function reflect(toks){
     const w = toks[i], prev = toks[i-1];
     if (SWAP[w]) { out.push(SWAP[w]); continue; }
     // verbo regolare alla 1ª persona: "mangio" → "mangi" (solo dove è probabilmente un verbo)
-    if (/[^aeiou]o$/.test(w) && w.length>3 && !STOP.has(w) && (i===0 || ["io","non","mi","ti","ci","lo","la","ne","che","e","ma","quando","se","anche","poi"].includes(prev))) { out.push(w.slice(0,-1)+(/(c|g)o$/.test(w)?"hi":"i")); continue; }
+    if (/[^aeiou]io$/.test(w) && w.length>4 && !STOP.has(w) && (i===0 || ["io","non","mi","ti","ci","ne","e","ma","quando","se","anche","poi"].includes(prev))) { out.push(w.slice(0,-1)); continue; }
+    if (/[^aeiou]o$/.test(w) && w.length>3 && !STOP.has(w) && !sentOf(w) && !/(ello|etto|ino|oso|ato|uto|ito)$/.test(w) && (i===0 || ["io","non","mi","ti","ci","ne","e","ma","quando","se","anche","poi"].includes(prev))) { out.push(w.slice(0,-1)+(/(c|g)o$/.test(w)?"hi":"i")); continue; }
     out.push(w);
   }
   return out;
@@ -112,15 +113,16 @@ export function analyze(msg){
   let m;
   if ((m = low.match(/(?:mi chiamo|il mio nome è|il mio nome e|chiamami) ([a-zà-ù]{2,14})/))) a.name = m[1];
   else if ((m = raw.match(/^(?:sono|io sono) ([A-ZÀ-Ù][a-zà-ù]{1,13})\b/))) a.name = m[1].toLowerCase();
-  if ((m = low.match(new RegExp("(?:^| )(?:mi piace|mi piacciono|adoro|amo|mi piace tanto|mi piace molto) "+art+"("+W+"(?: "+W+"){0,5})")))) {
-    const items = m[1].split(/ e | ed | o /).map(x=>x.split(" ").filter(w=>!STOP.has(w)).join(" ")).filter(v=>v && !/^(te|tu)$/.test(v));
+  if ((m = low.match(new RegExp("(?:^| )(?:mi piace|mi piacciono|adoro|amo|mi piace tanto|mi piace molto) "+art+"("+W+"(?: [a-zà-ù']+){0,5})")))) {
+    const items = m[1].split(/ e | ed | o /).map(x=>{ let ws = x.split(" ").filter(w=>!STOP.has(w)); if (ws.length > 1 && /(are|ere|ire)$/.test(ws[0])) ws = ws.slice(1); return ws.slice(0, 2).join(" ").split(" ")[0]; }).filter(v=>v && !/^(te|tu)$/.test(v));
     if (items.length){ a.like = items[0]; a.likes = items.slice(0,3); } }
   if ((m = low.match(new RegExp("(?:^| )(?:odio|detesto|non mi piace|non mi piacciono|non sopporto) "+art+"("+W+")")))) { if (!STOP.has(m[1]) && m[1]!=="te") a.dislike = m[1]; }
   if ((m = low.match(/(?:mi sento|sono|sto) (?:molto |tanto |un po' |un po |così |troppo |davvero |proprio )?([a-zà-ù]{4,})/)) && !STOP.has(m[1]) && SENTword(m[1])) a.feel = m[1];
   // evento futuro: "domani ho la verifica di storia"
   for (const tw in TIMEW){
     const i = toks.indexOf(tw); if (i<0) continue;
-    let rest = toks.slice(i+1); if (!rest.length) rest = toks.slice(0,i);
+    let rest = toks.slice(i+1);
+    if (!rest.length){ const before = toks.slice(0,i); if (!before.some(w => ["ho","devo","c","vado","parto","inizia","comincia","faccio"].includes(w))) break; rest = before; }
     rest = rest.filter((w,j)=> !(j===0 && ["ho","devo","c","è","vado","faccio","sono","a","al","alla","che"].includes(w)));
     while (rest.length && ["ho","devo","c","è","a","fare"].includes(rest[0])) rest.shift();
     if (rest.length >= 1 && rest.length <= 6 && rest.some(w=>!STOP.has(w))) { a.event = { x: reflect(rest).join(" "), when: TIMEW[tw], tw }; }
@@ -179,6 +181,65 @@ export function analyze(msg){
 }
 function SENTword(w){ const st = deacc(w); return Object.keys(SENT).some(k => SENT[k] && st.startsWith(k)) || /at[oa]$|it[oa]$|os[oa]$|ent[ei]$/.test(w); }
 
+/* ---------- ironia: sospetto, vocabolario personale, risposte ---------- */
+const NEGCTX = /\b(piov|pioggia|ritardo|traffico|luned|compit|verific|interrogazion|coda|fila|rott|pers[oa] |sveglia|freddo|sciopero|bocciat|malat|dentista|multa|bollett|scarico|scaric|ignorat|aspettare|aspettato|sabato a scuola|alle sei|lavatrice|pulire|stirare|esame|code|caos)/;
+const MARKERS = [/\banche oggi\b/, /\bdi nuovo\b/, /\bcome sempre\b/, /\bun altr[oa]\b/, /\bancora una volta\b/, /\bproprio oggi\b/, /\bche fortuna\b/, /\bgrazie eh\b/, /\bcome no\b/, /\beh già\b|\beh gia\b/, /\bma certo\b/, /\bovviamente\b/, /\bfinalmente\b.*\b(piov|ritardo|rott)/, /\bperfetto\b/, /\bproprio quello che\b/, /\bma certo\b|\bcerto come no\b|\bcerto che sì\b/];
+const IRONIC_EMO = /[🙄😏🙃😒🤡]/u;
+export function ironyRule(a){
+  const low = a.low + " ";
+  const pos = a.sv > 0 || /\b(bello|bella|meraviglia|fantastico|adoro|amo|evviva|che gioia|perfetto|ottimo|fortuna|divertente|stupendo)\b/.test(low);
+  const ctx = NEGCTX.test(low), mk = MARKERS.filter(re => re.test(low)).length;
+  let sc = 0;
+  if (pos && ctx) sc += .55; else if (pos && mk) sc += .3;
+  sc += Math.min(2, mk) * .18;
+  if (IRONIC_EMO.test(a.raw)) sc += .5;
+  if (/!{2,}|\.\.\./.test(a.raw) && pos) sc += .05;
+  const topic = a.toks.find(t => !STOP.has(t) && NEGCTX.test(" "+t+" ")) || null;
+  return { p: Math.min(1, sc), topic, pos };
+}
+export function ironyPersonal(S, a){
+  const L = S.mem.ironyLex || {}; let lo = 0, n = 0;
+  const KEEP = new Set(["anche","proprio","certo","già","ancora","sempre","davvero","altro","altra","nuovo","finalmente","evviva","grazie"]);
+  for (const w of new Set(a.toks)){ if (STOP.has(w) && !KEEP.has(w)) continue; const e = L[w]; if (!e || e.i + e.s < 3) continue; lo += Math.log((e.i + .5)/(e.s + .5)); n++; }
+  return n ? 1/(1+Math.exp(-lo)) : null;
+}
+/* stima combinata: rete (pesata da quanto è affidabile), regole, il tuo vocabolario */
+export function ironyEstimate(S, a, feel){
+  const R = ironyRule(a), P = ironyPersonal(S, a), st = S.mem.ironyStats || { hist:[] };
+  const acc = st.hist.length >= 5 ? st.hist.reduce((x,y)=>x+y,0)/st.hist.length : .5;
+  const net = feel ? feel.ironia : null;
+  let num = R.p*1.2, den = 1.2;
+  if (net != null){ const w = .4 + acc; num += net*w; den += w; }
+  if (P != null){ num += P*1.5; den += 1.5; }
+  let p = num/den;
+  if (R.p >= .5) p = Math.max(p, R.p*.95);          // un indizio forte non va annacquato
+  // quello che sa di te: lodare una cosa che non ti piace è ironia; lodare una cosa che ami no
+  if (R.topic && R.pos){ const tn = topicNoun(R.topic).replace(/^(il|lo|la|i|gli|le|l') ?/, "");
+    if (S.dislikes.includes(tn) || S.dislikes.includes(R.topic)) p = Math.min(1, p + .35);
+    else if (S.likes.includes(tn) || S.likes.includes(R.topic)) p = Math.max(0, p - .4); }
+  return { p, rule: R.p, net, pers: P, topic: R.topic, pos: R.pos, acc };
+}
+const IR_Q = [{ x:"stai scherzando?", yes:true }, { x:"lo dici sul serio?", yes:false }, { x:"ironico?", yes:true }, { x:"davvero o scherzi?", yes:null }, { x:"aspetta. è ironia?", yes:true }];
+const TOPIC_NOUN = { piove:"la pioggia", piovuto:"la pioggia", piovere:"la pioggia", pioggia:"la pioggia", "lunedì":"il lunedì", lunedi:"il lunedì", compiti:"i compiti", compito:"i compiti", verifica:"le verifiche", verifiche:"le verifiche", interrogazione:"le interrogazioni", traffico:"il traffico", ritardo:"i ritardi", sveglia:"svegliarti presto", freddo:"il freddo", coda:"le code", fila:"le file", code:"le code", pulire:"pulire", esame:"gli esami", dentista:"il dentista", sciopero:"gli scioperi", lavatrice:"la lavatrice" };
+export function topicNoun(t){ return TOPIC_NOUN[t] || withArt(t); }
+export function notLike(t){ const n = topicNoun(t); return `${n} non ti ${/^(i|le|gli) /.test(n) ? "piacciono" : "piace"}`; }
+export function ironyQuestion(rnd){ return IR_Q[Math.floor(rnd()*IR_Q.length)]; }
+/* interpreta la risposta: true = era ironia, false = sul serio, null = non chiaro */
+export function parseIronyAnswer(a, q){
+  const low = a.low;
+  if (/(scherz|ironi|figurati|certo che no|macché|ma va|ma no|ovvio che no|ahah|haha|\blol\b)/.test(low) || IRONIC_EMO.test(a.raw) || /😂|🤣/u.test(a.raw)) return !/non scherz|non (è|e) ironi|non ero ironic/.test(low);
+  if (/(sul serio|davvero|seriamente|non scherz|dico davvero|lo penso|mi piace davvero)/.test(low)) return false;
+  if (a.yes) return q.yes === null ? null : q.yes;
+  if (a.no) return q.yes === null ? null : !q.yes;
+  return null;
+}
+export const JOKE_DECL = /^(?:(?:sì|si|ma|dai|eh|no|ahah|ahahah|ovvio|ovviamente)\s+)*(scherzo|scherzavo|sto scherzando|stavo scherzando|ovvio che scherzo|ovviamente scherzo|era ironico|era ironia|ero ironico|ero ironica|era una battuta|dai scherzo|scherzo dai)\b/;
+export function learnIrony(S, msgA, ironic){
+  const L = S.mem.ironyLex || (S.mem.ironyLex = {});
+  for (const w of new Set(msgA.toks)){ if (w.length < 2) continue; const e = L[w] || { i:0, s:0 }; ironic ? e.i++ : e.s++; L[w] = e; }
+  const ks = Object.keys(L); if (ks.length > 400){ ks.sort((x,y)=>(L[x].i+L[x].s)-(L[y].i+L[y].s)); for (const k of ks.slice(0, ks.length-400)) delete L[k]; }
+}
+
 /* ---------- apprendimento ---------- */
 /* valore affettivo di una frase per lui: dal lessico, dal significato che gli hai spiegato, da come la usi */
 export function phraseVal(S, key){
@@ -186,7 +247,9 @@ export function phraseVal(S, key){
   let v = 0; for (const w of tokenize(key)){ const W = S.words[w]; if (!W) continue; if (W.val) v += W.val; else if (W.c >= 2) v += W.s / W.c; }
   return v;
 }
+function ensure(S){ S.mem ||= {}; S.mem.react ||= {}; S.mem.reward ||= {}; S.mem.feel ||= []; S.mem.events ||= []; S.mem.people ||= {}; S.mem.topics ||= {}; S.mem.corpus ||= []; S.self ||= { is:[], likes:[] }; S.self.is ||= []; S.self.likes ||= []; S.facts ||= {}; S.defs ||= {}; }
 export function learn(S, msg, a, t){
+  ensure(S);
   const newW = [], M0 = S.mem;
   // risposta a una domanda che aveva fatto lui ("come si chiama il tuo cane?" → "rex")
   if (M0.pendingQ && !a.q && !a.teach && t - M0.pendingQ.t < 10*60e3 && a.toks.length <= 8){
@@ -206,7 +269,8 @@ export function learn(S, msg, a, t){
     const v = phraseVal(S, key) + (a.kind ? 1 : 0) + (a.thanks ? .5 : 0);
     const neg = a.insult || /^(no|sbagliato|non hai capito|ma che dici|non è vero|non e vero|non c entra|smettila)/.test(a.low);
     const src = prev.src || "?";
-    if (v > 0 && !neg){ M0.reward[src] = (M0.reward[src]||0) + 1; a.praise = key; }
+    const toHim = a.rtoks.length <= 2 || a.rtoks.some(w => ["sei","hai","bravo","brava","bene","giusto","esatto","grande","ottimo","perfetto","bravissimo","bravissima"].includes(w));
+    if (v > 0 && !neg && toHim && !a.content.some(w => S.likes.includes(w))){ M0.reward[src] = (M0.reward[src]||0) + 1; a.praise = key; }
     else if (neg){ M0.reward[src] = (M0.reward[src]||0) - 1; a.scold = true; }
   }
   for (const w of a.rtoks){
@@ -388,6 +452,7 @@ function markov(ctx, seed){
 /* Restituisce {x, glyph, emo, raw, cap, set} */
 export async function reply(S, a, opt){
   const { phase:p, now, rnd, mind, net, sense, feel, insight } = opt;
+  ensure(S);
   const ctx = makeCtx(S, p, now, rnd), pick = ctx.pick;
   // la mente semantica capisce il senso anche quando le regole non bastano
   if (mind && mind.ready && (a.intent==="default" || a.intent==="question") && p>=1){
@@ -524,7 +589,7 @@ export async function reply(S, a, opt){
       const core = reflect(a.toks.filter(t => !["oggi","ieri","finalmente","sai","che"].includes(t))).join(" ");
       if (p>=3 && core.length < 50){ add(`${k}! ${core}`, w + .6, "praise"); C[C.length-1].praise = k; } }
   }
-  if (a.praise && p>=2){ add(S.words["grazie"] ? "grazie!" : `${a.praise}?`, 4.6, "ans"); if (p>=3 && S.words["grazie"]) add(`grazie. ${a.praise} anche tu`, 4.2, "ans"); }
+  if (a.praise && p>=2 && S.words["grazie"]){ add("grazie!", 4.6, "ans"); if (p>=3 && a.rtoks.length === 1) add(`grazie. ${a.praise} anche tu`, 4.2, "ans"); }
 
   // 3) risposte a fatti nuovi
   if (a.name){ add(p>=3 ? `${a.name}. bel nome` : `${a.name}!`, 4, "fact"); if (Cn && p>=3) add(`ciao ${a.name}. io sono ${Cn}`, 4, "fact"); }
@@ -556,13 +621,14 @@ export async function reply(S, a, opt){
   }
 
   // 5) curiosità: una parola nuova → chiede cosa vuol dire (lo insegna lui a se stesso)
-  const unknownWords = a.content.filter(w => S.words[w] && S.words[w].c <= 1 && !S.defs[w] && w.length >= 5 && !SENTword(w) && !COMMON.has(w) && !PEOPLE.includes(w) && !/(are|ere|ire|ato|ata|uto|ito|ando|endo|mente|issim)$/.test(w) && !innate(4).has(w));
+  const unknownWords = a.content.filter(w => S.words[w] && S.words[w].c <= 1 && !S.defs[w] && w.length >= 5 && !SENTword(w) && !COMMON.has(w) && !NEGCTX.test(" "+w+" ") && !PEOPLE.includes(w) && !/(are|ere|ire|ato|ata|uto|ito|ando|endo|mente|issim)$/.test(w) && !innate(4).has(w));
   const prevC = S.log[S.log.length-2];
-  if (prevC && prevC.w === "c" && a.rtoks.length <= 3 && !a.q && p>=2){   // "bravissimo" detto a lui per la prima volta
+  const irSusp = ironyRule(a).p > .25 || a.irony;
+  if (prevC && prevC.w === "c" && a.rtoks.length <= 3 && !a.q && !a.ask && p>=2 && !irSusp && !/(scherz|ironi)/.test(a.low)){   // "bravissimo" detto a lui per la prima volta
     const fresh = a.content.filter(w => S.words[w] && S.words[w].c <= 1 && !S.defs[w] && w.length >= 4 && !COMMON.has(w) && !innate(4).has(w));
     if (fresh.length){ const w = fresh[0]; add(p>=3 ? `${w}? cosa vuol dire ${w}?` : `${w}? cos'è?`, 4.2, "ask"); C[C.length-1].setAsk = w; }
   }
-  if (unknownWords.length && p>=2 && !a.q && !a.ask && ["default","event","pos","neg","feel","like","dislike"].includes(a.intent) && !/^(è|e|sono) /.test(a.low)){ const w = pick(unknownWords); add(p>=3 ? `${w}? cos'è ${w}?` : `${w}? cos'è?`, 2.4 + S.traits.curiosita, "ask"); C[C.length-1].setAsk = w; }
+  if (unknownWords.length && p>=2 && !a.q && !a.ask && !irSusp && ["default","event","pos","neg","feel","like","dislike"].includes(a.intent) && !/^(è|e|sono) /.test(a.low)){ const w = pick(unknownWords); add(p>=3 ? `${w}? cos'è ${w}?` : `${w}? cos'è?`, 2.4 + S.traits.curiosita, "ask"); C[C.length-1].setAsk = w; }
 
   // 6) memoria: collega a cose dette prima
   if (p>=3 && !a.ask){
@@ -585,18 +651,21 @@ export async function reply(S, a, opt){
     for (const c of net.cands){
       const ws = c.x.split(" ");
       if (c.x.length > OUTMAX[p] || ws.length > 9 || STOP.has(ws[ws.length-1]) && !["bene","male","qui"].includes(ws[ws.length-1])) continue;
-      if (!story && (!c.rel || ws.length < 4)) continue;             // deve parlare di quello di cui parli
+      if (!story && (!c.rel || ws.length < 4 || c.lp < -2.2)) continue;
+      const cont = ws.filter(w => !STOP.has(w)); if (new Set(cont).size < cont.length) continue;      // "il mare il mare"
+      if (/\b(il|lo|la|i|gli|le|un|una) (il|lo|la|i|gli|le|un|una|e|di|a)\b/.test(c.x)) continue;             // deve parlare di quello di cui parli
       if (a.ask && !story) { add(c.x, .6, "rete"); continue; }        // a una domanda si risponde, non si divaga
       const mine = new Set(a.toks), ov = ws.filter(w => mine.has(w)).length / ws.length;
       if (ov > .6 && !story) continue;                              // non ripetere la tua frase
-      add(c.x, (story ? 4.5 : p>=4 ? 1.8 : .8) + c.rel*.8 + Math.max(-1, c.lp+2)*.3, "rete"); C[C.length-1].noLex = true;
+      add(c.x, (story ? 4.5 : p>=4 ? 1.6 : .3) + c.rel*.6 + Math.max(-1, c.lp+2)*.3, "rete"); C[C.length-1].noLex = true;
     }
   } else if (p>=4 && rnd() < .5){ const seed = salient(ctx, a)[0]; const mk = markov(ctx, seed); if (mk) add(mk, 1.6 + S.traits.ironia*.5, "voce"); }
   if (net && net.pairs && p>=4) for (const [x, y] of net.pairs) add(`per te ${x} e ${y} sono vicini. l'ho capito da solo`, 2.2, "rete");
 
   // ironia capita: non la prende alla lettera
   if (a.irony && p>=2){
-    add("lo dici sul serio?", 4.2, "senso");
+    add("ahah. come no", 3.8, "senso");
+    const tp = ironyRule(a).topic; if (tp){ const tn = topicNoun(tp).replace(/^(il|lo|la|i|gli|le|l') ?/, ""); if (S.dislikes.includes(tn) || S.dislikes.includes(tp)) add(`ahah. lo so che ${notLike(tp)}`, 5, "senso"); }
     if (p>=3){ add("ahah. ho capito che non lo pensi davvero", 4, "senso"); const xs2 = salient(ctx, a); if (xs2[0]) add(`${xs2[0]}... bello eh. come no`, 3.6, "senso"); }
   }
   // capisce qualcosa del tuo carattere
@@ -647,6 +716,7 @@ export async function reply(S, a, opt){
   const best = C[0];
   if (!best || best.sc < -1) return glyph();
   if (best.setAsk) set.ask = best.setAsk;
+  best.x = best.x.replace(/\b(ti|mi) piace (i|le|gli) /g, "$1 piacciono $2 ");
   if (best.sense) set.sense = best.sense;
   if (best.praise) set.praise = best.praise;
   if (best.insight) set.insight = best.insight;
