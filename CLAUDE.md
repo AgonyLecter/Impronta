@@ -7,7 +7,7 @@ Web app statica (GitHub Pages da `main`), tutta in italiano, nessuna API di IA a
 ## Richieste dell'utente (da rispettare)
 - Niente API di IA a pagamento o limitate. Tutto deve girare in locale/gratis.
 - Deve stupire chi lo usa e lasciare di stucco un programmatore: libreria propria, nessuna dipendenza.
-- Interfaccia: niente chat da scorrere; solo l'ultima frase sotto il volto a punti.
+- Interfaccia: niente chat da scorrere; solo l'ultima frase sotto il volto a punti. Schede in stile Nothing/HUD (riquadri a punti, rosso solo come accento), tutto custom e "wow" dove serve.
 - Dorme per allenarsi; si può svegliare (umore variabile). Vuole che si alleni anche ad app chiusa
   → fatto: `tools/sogna.mjs` + `.github/workflows/sogni.yml` (vedi `docs/PIANO-SOGNI-GITHUB.md`, serve il secret).
 - NUOVA DIREZIONE: esperimento di rete neurale vera che studia da sola (Wikipedia, Wikizionario, libri liberi, link) e racconta cosa scopre; niente quiz, niente "mistero" → `docs/PIANO-STUDIO.md` (primo pezzo fatto).
@@ -19,6 +19,7 @@ Web app statica (GitHub Pages da `main`), tutta in italiano, nessuna API di IA a
 | `index.html` | markup + tutto il CSS (token in `:root`), schermata di accensione `#boot` |
 | `app.js` | app: stato, Firebase, volto a punti (canvas), voce, flussi (nascita, fasi, sonno, risveglio, accoglienza), input, schede (parole, diario, mente, come ti vede, menu, laboratorio) |
 | `brain.js` | cervello a regole: analisi dell'italiano, memoria, insegnamenti (nome, fatti, gusti), domande, riflessione io↔tu, curiosità ("cos'è X?"), rinforzo (impara quando usare "bravissimo"), ironia (stima, domande, vocabolario personale). `reply()` genera candidati e li valuta |
+| `hud.js` | grafica custom (canvas, nessuna dipendenza): `cervello()` rete 3D vera che rivive l'ultima frase, `galassia()` parole nello spazio dei significati, `puntini()`, `tile()`, `segmenti()`, `titolo()` |
 | `senso.js` | ritmo di scrittura, lettura dal vivo mentre scrivi, profezia in glifi |
 | `nucleo/rete.js` | rete GRU scritta a mano: BPTT + Adam, testa affettiva (8 emozioni), trigrammi di lettere, crescita in larghezza (`widen`, `widenD`) e profondità (`deepen`, strati residui), softmax campionata, salvataggio base64 (anche 16 bit) |
 | `nucleo/maestro.js` | autoapprendimento: curriculum (frasi utente + istinto), autovalutazione su esempi tenuti da parte, politica di crescita, `senti`, `parla` |

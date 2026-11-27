@@ -62,6 +62,21 @@ class P {
   }
 }
 
+/* le due direzioni principali di un insieme di vettori (metodo delle potenze), coordinate normalizzate in [-1, 1] */
+function pca2(X, dim, r){
+  const n = X.length, mean = new Float32Array(dim); for (const x of X) for (let i=0;i<dim;i++) mean[i] += x[i]/n;
+  const C = X.map(x => { const y = new Float32Array(dim); for (let i=0;i<dim;i++) y[i] = x[i] - mean[i]; return y; }), comps = [];
+  for (let c=0;c<2;c++){ let v = Array.from({length:dim}, () => r()-.5);
+    for (let it=0;it<24;it++){ const nv = new Float32Array(dim);
+      for (const x of C){ let d = 0; for (let i=0;i<dim;i++) d += x[i]*v[i]; for (let i=0;i<dim;i++) nv[i] += d*x[i]; }
+      for (const q of comps){ let d = 0; for (let i=0;i<dim;i++) d += nv[i]*q[i]; for (let i=0;i<dim;i++) nv[i] -= d*q[i]; }
+      let nn = 0; for (let i=0;i<dim;i++) nn += nv[i]*nv[i]; nn = Math.sqrt(nn) || 1; v = Array.from(nv, t => t/nn); }
+    comps.push(v); }
+  const P = C.map(x => comps.map(q => { let d = 0; for (let i=0;i<dim;i++) d += x[i]*q[i]; return d; }));
+  for (const k of [0, 1]){ const m = Math.max(1e-9, ...P.map(p => Math.abs(p[k]))); P.forEach(p => p[k] = +(p[k]/m).toFixed(3)); }
+  return P;
+}
+
 export class Rete {
   constructor(o = {}){
     this.D = o.D || 40; this.H = o.H || 16; this.L = 1; this.r = rng(o.seed || 7);
@@ -261,6 +276,28 @@ export class Rete {
     return ws.map((w, k) => ({ w, x: X[k].reduce((s,t,i)=>s+t*comps[0][i],0), y: X[k].reduce((s,t,i)=>s+t*comps[1][i],0) }));
   }
 
+
+  /* ---------- per vederla: il connettoma (dove stanno i neuroni e le sinapsi più forti) e l'attività su una frase ---------- */
+  connettoma(maxEdges = 420){
+    const H = this.H, L = this.L, p = this.p, out = { H, L, D: this.D, V: this.V, layers: [], between: [], emo: [] };
+    const top = (vals, k) => { if (vals.length <= k) return vals; const a = Float32Array.from(vals, v => Math.abs(v[2])).sort(); const th = a[a.length - k]; return vals.filter(v => Math.abs(v[2]) >= th).slice(0, k); };
+    const per = Math.max(60, Math.floor(maxEdges / L));
+    for (let l=0;l<L;l++){
+      const Lp = this.lay(l), Un = Lp.Un.d, Uz = Lp.Uz.d, rows = [], edges = [], imp = new Float32Array(H);
+      for (let j=0;j<H;j++){ const r = new Float32Array(H); for (let i=0;i<H;i++){ const w = Un[j*H+i] + .5*Uz[j*H+i]; r[i] = w; imp[j] += w*w; if (i !== j) edges.push([i, j, w]); } rows.push(r); }
+      // i neuroni che lavorano insieme stanno vicini: posizione = le due direzioni principali dei loro pesi
+      const pos = pca2(rows, H, this.r), mx = Math.max(...imp) || 1;
+      out.layers.push({ pos, imp: Array.from(imp, v => +(Math.sqrt(v/mx)).toFixed(3)), edges: top(edges, per).map(([i, j, w]) => [i, j, +w.toFixed(3)]) });
+      if (l){ const W = Lp.Wn.d, R = Lp.R.d, e = []; for (let j=0;j<H;j++) for (let i=0;i<H;i++){ const w = W[j*H+i] + R[i*H+j]; e.push([i, j, w]); } out.between.push(top(e, Math.floor(per/2)).map(([i, j, w]) => [l, i, j, +w.toFixed(3)])); }
+    }
+    for (let k=0;k<AFFETTI.length;k++){ const e = []; for (let j=0;j<H;j++) e.push([k, j, p.Wa.d[k*H+j]]); out.emo.push(...top(e, 5).map(([k, j, w]) => [k, j, +w.toFixed(3)])); }
+    out.growth = this.growth;
+    return out;
+  }
+  attiva(words){
+    const f = this.fwd(this.ids(words, false), false);
+    return { words: ["·", ...words], acts: f.layers.map(st => st.map(s => Array.from(s.h, v => Math.round(v*100)))), a: Array.from(f.a, v => +v.toFixed(3)) };
+  }
 
   /* ---------- crescita in larghezza: Net2Wider su tutti gli strati (aggiunge neuroni senza cambiare cosa sa) ---------- */
   widen(newH, noise = .01){

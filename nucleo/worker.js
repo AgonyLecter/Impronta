@@ -14,6 +14,8 @@ export function handle(op, d){
     case "near": return M.net.near(d.w, d.n || 3, d.among || null);
     case "save": return M.save(!!d.half);
     case "lessico": return M.lessico();
+    case "connettoma": return M.net.connettoma(d.max || 420);
+    case "attiva": return M.net.attiva((d.text || "").toLowerCase().replace(/[’`]/g,"'").match(/[a-zàáèéìíòóùú]+/g) || []);
     case "info": return M.info();
   }
   throw new Error("op sconosciuta " + op);

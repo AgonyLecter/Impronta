@@ -100,5 +100,8 @@ export class Nucleo {
     this.info = await this.call("init", { saved, corpus, labels, seed });
     await this.salva(); this.emit(); return this.info;
   }
+  /* per vederla */
+  async connettoma(max = 420){ if (!this.ready) return null; try { return await this.call("connettoma", { max }); } catch (e){ return null; } }
+  async attiva(text){ if (!this.ready) return null; try { return await this.call("attiva", { text }); } catch (e){ return null; } }
   async dimentica(){ clearInterval(this.timer); await store.del(this.key); }
 }
