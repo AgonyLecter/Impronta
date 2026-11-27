@@ -1,6 +1,7 @@
 /* impronta · app */
 import * as B from "./brain.js";
 import { Ritmo, liveRead, prophecy, prophecyHit } from "./senso.js";
+import { Nucleo, AFFETTI, etichetta, conferma, registra, analizza } from "./nucleo/index.js";
 const { PHASES, LIMITS, ENERGY, NEED, HOUR, DAY, DAYS, G, STOP } = B;
 
 /* ================= CONFIG ================= */
@@ -39,10 +40,10 @@ const smooth = x => { x = clamp(x,0,1); return x*x*(3-2*x); };
 
 /* ================= STATO ================= */
 function blank(id){ return { v:2, id, born:0, name:"", userName:"", firstWord:"", firstMsg:null, awaitName:false, forcePhase:0,
-  phase:0, words:{}, phrases:{}, quotes:[], likes:[], dislikes:[], defs:{},
+  phase:0, words:{}, phrases:{}, quotes:[], likes:[], dislikes:[], defs:{}, self:{is:[],likes:[]}, facts:{},
   traits:{calore:0,ironia:0,curiosita:0,coraggio:0,calma:0,malinconia:0},
   user:{msgs:0,chars:0,emoji:{},emojiMsgs:0,lower:0,excl:0,dot:0,abbr:{},hours:Array(24).fill(0),firstLens:[],lens:[],typing:{n:0,cps:0,del:0}},
-  mem:{feel:[],events:[],people:{},topics:{},corpus:[],ask:null,openers:[]},
+  mem:{feel:[],events:[],people:{},topics:{},corpus:[],ask:null,openers:[],react:{},reward:{},labels:[],mood:[],pendingQ:null,confirm:null},
   log:[], diary:[], diaryUnread:0, glyphs:[], revealed:false,
   energy:{used:0,sleepUntil:0}, lastSeen:0, sessions:0, sparks:{}, hurt:0, promise:0, litSeen:0, sound:true, updatedAt:0 }; }
 const arr = v => Array.isArray(v) ? v : v ? Object.values(v) : [];
@@ -53,8 +54,10 @@ function normalize(s, id){
   for (const k of ["hours","firstLens","lens"]) o.user[k] = arr(o.user[k]);
   if (o.user.hours.length < 24) o.user.hours = Array(24).fill(0).map((_,i)=>o.user.hours[i]||0);
   o.user.typing = Object.assign({n:0,cps:0,del:0}, o.user.typing||{});
-  for (const k of ["feel","events","corpus","openers"]) o.mem[k] = arr(o.mem[k]);
-  o.mem.people = o.mem.people||{}; o.mem.topics = o.mem.topics||{};
+  for (const k of ["feel","events","corpus","openers","labels","mood"]) o.mem[k] = arr(o.mem[k]);
+  for (const k of ["people","topics","react","reward"]) o.mem[k] = o.mem[k]||{};
+  o.self = Object.assign({is:[],likes:[]}, o.self||{}); o.self.is = arr(o.self.is); o.self.likes = arr(o.self.likes); o.facts = o.facts||{};
+  o.mem.labels.forEach(l => { l.l = arr(l.l); l.m = arr(l.m); });
   // migrazione: il corpus della voce nasce dalle frasi già dette
   if (!o.mem.corpus.length && o.log.length) o.mem.corpus = o.log.filter(l=>l.w==="u").map(l=>B.tokenize(l.x).join(" ")).filter(l=>l.split(" ").length>=3);
   o.words = o.words||{}; o.phrases = o.phrases||{}; o.defs = o.defs||{}; o.user.emoji = o.user.emoji||{}; o.user.abbr = o.user.abbr||{}; o.id = id;
@@ -157,6 +160,8 @@ function features(){
     else if (e==="curious" && side===1){ for(let i=0;i<2;i++) for(let j=-1;j<3;j++) put(ex+i,ey+j); }
     else if (e==="think"){ for(let i=0;i<2;i++) for(let j=0;j<2;j++) put(ex+i+1,ey+j-1); }
     else if (e==="listen"){ for(let i=0;i<2;i++) for(let j=0;j<3;j++) put(ex+i,ey+j); put(ex,ey+3,.5); put(ex+1,ey+3,.5); }
+    else if (e==="smirk"){ if (side===0){ for(let i=0;i<2;i++) for(let j=0;j<3;j++) put(ex+i,ey+j); } else { for(let i=0;i<2;i++){ put(ex+i,ey+1); put(ex+i,ey+2,.8); } put(ex-1,ey-1,.7); put(ex,ey-1,.7); } }
+    else if (e==="sleepy"){ for(let i=0;i<2;i++){ put(ex+i,ey+1,.8); put(ex+i,ey+2); } }
     else { for(let i=0;i<2;i++) for(let j=0;j<3;j++) put(ex+i,ey+j); }
   });
   if (e==="hurt") put(C-4+gx, C+1+gy, "r");
@@ -175,6 +180,8 @@ function features(){
   else if (e==="think"){ put(C,my); put(C+1,my); put(C+2,my); }
   else if (e==="listen"){ put(C,my,.7); put(C+1,my,.7); }
   else if (e==="curious"){ put(C+1,my); put(C+2,my); }
+  else if (e==="smirk"){ put(C-2,my); put(C-1,my); put(C,my); put(C+1,my-1); put(C+2,my-1); }
+  else if (e==="sleepy"){ put(C,my); put(C+1,my); }
   return m;
 }
 function sizeCanvas(){ const r=cv.getBoundingClientRect(), dpr=Math.min(3,devicePixelRatio||1); cv.width=Math.round(r.width*dpr); cv.height=Math.round(r.height*dpr); }
@@ -236,33 +243,18 @@ addEventListener("pointerdown", e => { F.pointer = { x:e.clientX, y:e.clientY, t
 function setEmo(e, ms){ F.emo = e; if (ms) setTimeout(()=>{ if (F.emo===e) F.emo = isAsleep() ? "sleep" : "neutral"; }, ms); }
 function favicon(){ try{ const c=document.createElement("canvas"); c.width=c.height=64; const g=c.getContext("2d"); g.fillStyle="#000"; g.fillRect(0,0,64,64); const gr=growth()*(R-1.2); g.fillStyle="#fff"; for(const cl of CELLS){ g.globalAlpha=cl.ring?.6:(cl.d<gr?.5:.12); g.beginPath(); g.arc(4+cl.x*2.6,4+cl.y*2.6,1,0,7); g.fill(); } g.globalAlpha=1; g.fillStyle="#e5161f"; g.beginPath(); g.arc(50,14,4,0,7); g.fill(); $("#fav").href=c.toDataURL(); }catch(e){} }
 
-/* ================= RETE NEURALE (worker) ================= */
+/* ================= NUCLEO (rete che cresce da sola) ================= */
+const nucleo = new Nucleo({
+  onCresce: (g) => { ripple(.9, 50); setTimeout(()=>ripple(.6, 65), 250); buzz([20,40,20]); tone(660,.12,"triangle",.03); tone(990,.16,"triangle",.03,.12); setHint(`*è cresciuto* · ${g.from} → ${g.to} neuroni`, true); S.sparks.lastGrow = { ...g, t: Date.now() }; save(); }
+});
 const mente = {
-  ready:false, info:null, w:null, local:null, seq:0, pend:new Map(), trains:0,
-  async start(){
-    try{
-      this.w = new Worker(new URL("./rete-worker.js", import.meta.url), { type:"module" });
-      this.w.onmessage = e => { const p = this.pend.get(e.data.id); if (!p) return; this.pend.delete(e.data.id); e.data.err ? p.rej(new Error(e.data.err)) : p.res(e.data.res); };
-      this.w.onerror = () => { this.w = null; };
-    }catch(e){ this.w = null; }
-    let saved = null; try{ saved = JSON.parse(ls.get("impronta_net") || "null"); }catch(e){}
-    try{ this.info = await Promise.race([this.call("init", { saved, corpus:S.mem.corpus, seed:strSeed(S.id) }), wait(6000).then(()=>{ throw new Error("timeout") })]); }
-    catch(e){ // fallback: stessa rete nel thread principale
-      if (this.w){ try{ this.w.terminate(); }catch(_){} } this.w = null;
-      try{ const m = await import("./rete-worker.js"); this.local = m.handle; this.info = this.local("init", { saved, corpus:S.mem.corpus, seed:strSeed(S.id) }); }catch(err){ return; }
-    }
-    this.ready = true;
-    if (!saved && S.mem.corpus.length >= 6){ for (let i=0;i<8;i++) await this.train(400); this.persist(); }
-  },
-  call(op, d={}){
-    if (this.local) { try{ return Promise.resolve(this.local(op, d)); }catch(e){ return Promise.reject(e); } }
-    if (!this.w) return Promise.reject(new Error("nessuna rete"));
-    const id = ++this.seq; return new Promise((res, rej) => { this.pend.set(id, {res, rej}); this.w.postMessage({ id, op, ...d }); });
-  },
-  async train(n=300){ if (!this.ready) return null; await this.call("corpus", { corpus:S.mem.corpus }); this.info = await this.call("train", { n }); if (++this.trains % 6 === 0) this.persist(); return this.info; },
-  async persist(){ if (!this.ready) return; try{ const d = await this.call("save"); if (d.vocab.length > 1600){ this.info = await this.call("init", { saved:null, corpus:S.mem.corpus, seed:strSeed(S.id)+1 }); return; } ls.set("impronta_net", JSON.stringify(d)); }catch(e){} },
-  async speak(seeds, n=40){ if (!this.ready || (this.info && this.info.steps < 800) || S.mem.corpus.length < 6) return []; try{ return await this.call("speak", { seeds, n }); }catch(e){ return []; } },
-  async near(w, among){ if (!this.ready) return []; try{ return await this.call("near", { w, n:3, among }); }catch(e){ return []; } }
+  get ready(){ return nucleo.ready; }, get info(){ return nucleo.info; },
+  start(){ return nucleo.avvia({ corpus: S.mem.corpus, labels: S.mem.labels, seed: strSeed(S.id) }).catch(e => console.warn("nucleo", e)); },
+  train(){ return nucleo.impara(200); },
+  persist(){ return nucleo.salva(); },
+  speak(seeds, n){ return nucleo.parla(seeds, n); },
+  near(w, among){ return nucleo.vicine(w, among); },
+  call(op, d){ return op === "map" ? nucleo.mappa(d.words) : nucleo.call(op, d); }
 };
 
 /* ================= UI ================= */
@@ -323,7 +315,7 @@ async function say(text, o={}){
     text = out;
   }
   if (o.cap) setCap(o.cap);
-  if (!o.ghost){ S.log.push({t:now(), w:"c", x:text, g:o.glyph?1:0}); if(S.log.length>120) S.log.shift(); }
+  if (!o.ghost){ S.log.push({t:now(), w:"c", x:text, g:o.glyph?1:0, src:o.src||(o.glyph?"glifo":"tpl")}); if(S.log.length>120) S.log.shift(); }
   if (o.emo) setTimeout(()=>{ if(!isAsleep()) setEmo("neutral"); }, 2000);
   busy = false; render(); save();
 }
@@ -350,9 +342,12 @@ async function revealOracle(){
 
 /* ================= RISPOSTA ================= */
 let sessionMsgs = 0; const sessionSense = {};
-async function respond(msg, a, sense){
+async function respond(msg, a, sense, feel){
   const p = phase();
-  let net = null;
+  let net = null, insight = null;
+  if (p >= 3 && sessionMsgs >= 3 && rnd() < .12){
+    const C = analizza(S); insight = (C.insights || []).find(i => !S.sparks["ins_"+i.x]) || null;
+  }
   if (p >= 3 && mente.ready){
     const seeds = a.content.filter(w => S.words[w]);
     const cands = await mente.speak(seeds);
@@ -362,15 +357,26 @@ async function respond(msg, a, sense){
       if (nn[0] && nn[0][1] > .55){ net.pairs = [[seeds[0], nn[0][0]]]; S.sparks["near_"+seeds[0]] = 1; }
     }
   }
-  const r = await B.reply(S, a, { phase:p, now:now(), rnd, net, sense:{ ...sense, used:sessionSense, msgN:sessionMsgs } });
+  const r = await B.reply(S, a, { phase:p, now:now(), rnd, net, feel, insight, sense:{ ...sense, used:sessionSense, msgN:sessionMsgs } });
   const set = r.set || {};
-  if (set.def){ S.defs[set.def.w] = set.def.x; S.mem.ask = null; }
+  let cap = r.cap || "";
+  if (set.def){ S.defs[set.def.w] = set.def.x; S.mem.ask = null; const W = S.words[set.def.w]; if (W) W.val = B.analyze(set.def.x).sv; }
   else if (set.ask) S.mem.ask = { w:set.ask, t:now() };
   else S.mem.ask = null;
   if (set.sense) sessionSense[set.sense] = 1;
   if (set.askName) S.awaitUserName = 1;
-  if (r.src === "rete") ripple(.35, 55);
-  await say(r.x, { glyph:r.glyph, emo:r.emo, raw:r.raw, cap:r.cap || (r.src==="rete" && rnd()<.25 ? "questa frase non l'hai mai scritta tu" : "") });
+  if (set.pendingQ) S.mem.pendingQ = { ...set.pendingQ, t: now() };
+  if (set.insight && insight) S.sparks["ins_"+insight.x] = 1;
+  if (set.praise && !S.sparks["praise_"+set.praise]){ S.sparks["praise_"+set.praise] = 1; cap = `ha imparato da te quando si dice «${set.praise}»`; }
+  if (r.src === "rete"){ ripple(.35, 55); if (!cap && rnd() < .25) cap = "questa frase non l'hai mai scritta tu"; }
+  if (r.src === "senso" && a.irony && !S.sparks.ironyCap){ S.sparks.ironyCap = 1; cap = "ha capito che era ironia"; }
+  await say(r.x, { glyph:r.glyph, emo:r.emo, raw:r.raw, cap, src:r.src });
+  // se non è sicuro di cosa provi, te lo chiede: la tua risposta diventa una lezione
+  if (feel && feel._incerto && p >= 3 && ["ironia","tristezza","rabbia","paura"].includes(feel._top) && !S.mem.confirm && rnd() < .45 && r.src !== "senso"){
+    const Q = { ironia:"stai scherzando?", tristezza:"sei triste?", rabbia:"sei arrabbiato?", paura:"hai paura?" };
+    S.mem.confirm = { k: feel._top, x: msg, t: now() };
+    await say(Q[feel._top], { emo:"curious", raw:true, src:"chiede" });
+  }
 }
 
 /* ================= MOMENTI ================= */
@@ -400,14 +406,14 @@ async function reveal(){
   for (const g of S.glyphs.slice(0,6)){ const e=document.createElement("div"); e.className="entry"; e.innerHTML=`<time>${dstr(g.t)} · ${hhmm(g.t)}</time>`; e.appendChild(glyphEl(g.x,{cell:5})); const tr=document.createElement("div"); tr.style.marginTop="8px"; e.appendChild(tr); box.appendChild(e); await wait(600); for(const ch of "«"+g.x+"»"){ tr.textContent+=ch; await wait(40); } }
 }
 let dreaming = false;
-async function dream(rounds = 14){
-  if (!mente.ready || dreaming || S.mem.corpus.length < 6) return;
-  dreaming = true; F.dream = 1; const l0 = mente.info && mente.info.loss;
-  for (let i=0;i<rounds && isAsleep() && !document.hidden;i++){
-    const inf = await mente.train(500); await wait(350);
-    if (inf && inf.loss != null) setCap(`sogna · confusione ${inf.loss.toFixed(2)}${l0?` (era ${l0.toFixed(2)})`:""}`);
-  }
-  F.dream = 0; dreaming = false; mente.persist();
+async function dream(ms = 14000, force = false){
+  if (!nucleo.ready || dreaming || S.mem.corpus.length < 4) return;
+  dreaming = true; F.dream = 1; let first = null;
+  await nucleo.sogna(ms, (r) => {
+    if (!r || r.loss == null) return; if (first == null) first = r.loss;
+    setCap(`sogna · neuroni ${r.H} · confusione ${r.loss.toFixed(2)}${first ? ` (era ${first.toFixed(2)})` : ""}`);
+  }, () => (!force && !isAsleep()) || document.hidden);
+  F.dream = 0; dreaming = false;
   const d = (await mente.speak([], 30))[0];
   if (d){ S.diary.push({t:now(), x:`ho sognato: «${d.x}»`}); S.diaryUnread++; save(); render(); setCap("ha sognato. è nel diario"); }
 }
@@ -501,18 +507,27 @@ async function hatch(){
   S.born = now(); S.lastSeen = now(); S.sessions = 1; S.user.hours[new Date().getHours()]++;
   flash(); buzz([80,40,200]); F.glitch = performance.now()+700; ripple(1, 40);
   [262,330,392,523,659].forEach((f,i)=>tone(f,.5,"triangle",.05,i*.06));
-  F.hold = 0; setEmo("surprised"); save(); render(); favicon(); setHint("");
+  F.hold = 0; document.body.classList.remove("unborn"); setEmo("surprised"); save(); render(); favicon(); setHint("");
   await wait(1600);
   await say(G.first[0], {glyph:true, emo:"curious"});
   setCap("la prima parola che scrivi sarà la sua prima parola");
   S.litSeen = Math.round(growth()*100); render(); inp.focus();
 }
 const stage = $("#stage");
-stage.addEventListener("pointerdown", e=>{ try{ stage.setPointerCapture(e.pointerId); }catch(_){}
-  if (S.born){ if(!isAsleep()){ setEmo("happy",900); tone(880,.05,"triangle",.03); buzz(15); cv.classList.add("poke"); setTimeout(()=>cv.classList.remove("poke"), 90); ripple(.25, 40); } return; }
+// niente menu "copia / seleziona" con la pressione lunga (tranne nel campo di testo)
+document.addEventListener("contextmenu", e => { if (!e.target.closest("input")) e.preventDefault(); });
+document.addEventListener("selectstart", e => { if (!e.target.closest || !e.target.closest("input")) e.preventDefault(); });
+stage.addEventListener("pointerdown", e=>{
+  if (!S.born) return;
+  if(!isAsleep()){ setEmo("happy",900); tone(880,.05,"triangle",.03); buzz(15); cv.classList.add("poke"); setTimeout(()=>cv.classList.remove("poke"), 90); ripple(.25, 40); } });
+// per nascere si può tenere premuto ovunque sullo schermo
+const mainEl = document.querySelector("main");
+mainEl.addEventListener("pointerdown", e=>{
+  if (S.born || holding || !document.body.classList.contains("unborn")) return;
+  try{ mainEl.setPointerCapture(e.pointerId); }catch(_){}
   holding=true; holdStart=performance.now(); audio(); setHint("ancora…"); holdTick(); });
 const release = ()=>{ if (!holding) return; holding=false; cancelAnimationFrame(holdRaf); const decay=setInterval(()=>{ F.hold=Math.max(0,F.hold-.04); if(F.hold<=0) clearInterval(decay); },30); setHint("tieni premuto. di più."); };
-["pointerup","pointercancel"].forEach(ev=>stage.addEventListener(ev, release));
+["pointerup","pointercancel"].forEach(ev=>{ mainEl.addEventListener(ev, release); window.addEventListener(ev, release); });
 
 /* ================= SCHERMO INTERO ================= */
 const fsEl = document.documentElement, fsReq = fsEl.requestFullscreen || fsEl.webkitRequestFullscreen;
@@ -541,6 +556,9 @@ inp.addEventListener("input", ()=>{
     if (busy || !S.born || !S.name) return;
     const L = liveRead(inp.value, S);
     F.live = L ? L.emo : null;
+    if (L && inp.value.trim().length > 6 && nucleo.ready){ const txt = inp.value; nucleo.senti(txt).then(f => { if (!f || inp.value !== txt || busy) return;
+      const m = { ironia:"smirk", tristezza:"sad", rabbia:"hurt", paura:"surprised", gioia:"happy", affetto:"happy", stanchezza:"sleepy", sorpresa:"surprised" }[f._top];
+      if (f._conf > .6 && m && F.live !== "happy") F.live = m; }); }
     if (L && L.name && !nameSeen){ nameSeen = true; tone(990,.05,"triangle",.03); tone(1320,.06,"triangle",.03,.07); ripple(.3,50); }
     if (L && L.newWord && L.newWord !== newSeen && phase()>=1){ newSeen = L.newWord; setHint(`non conosce «${L.newWord}»`); }
     if (!inp.value) { F.live = null; nameSeen = false; }
@@ -576,12 +594,30 @@ $("#bar").addEventListener("submit", e=>{
     }
     if (S.awaitUserName && !a.name && a.toks.length <= 2 && !a.q){ a.name = a.toks[a.toks.length-1]; a.intent = "name"; }
     S.awaitUserName = 0;
+    // la rete sente cosa provi (stima, prima di imparare da questo messaggio)
+    const feel = await nucleo.senti(msg);
+    // risposta a "stai scherzando?" / "sei triste?": diventa una lezione fortissima
+    let confirmed = null;
+    if (S.mem.confirm && now() - S.mem.confirm.t < 10*60e3 && (a.yes || a.no)){
+      const c = S.mem.confirm, L = conferma(c.k, a.yes, AFFETTI);
+      nucleo.osserva(c.x, L); S.mem.labels.push({ x: B.tokenize(c.x).join(" "), l: L.lab, m: L.mask, w: L.w }); if (S.mem.labels.length > 300) S.mem.labels.shift();
+      confirmed = { k: c.k, yes: a.yes };
+    }
+    S.mem.confirm = null;
     const newW = B.learn(S, msg, a, now()); updateTraits(a);
+    // etichette automatiche (emoji, segnali) e ricordo dell'umore per capire il carattere
+    const lab = etichetta(msg, a, AFFETTI);
+    nucleo.osserva(msg, lab);
+    if (lab){ S.mem.labels.push({ x: B.tokenize(msg).join(" "), l: lab.lab, m: lab.mask, w: lab.w }); if (S.mem.labels.length > 300) S.mem.labels.shift(); }
+    registra(S, msg, a, feel, now());
     S.energy.used++;
     if (newW.length && phase()>=1) setHint(`ha imparato: ${newW.slice(0,3).join(", ")}`);
     if (hit){ oracleP = null; await revealOracle(); await say(phase()>=2 ? "lo sapevo" : "!", {emo:"happy", raw:true, cap:"sapeva cosa avresti scritto"}); }
-    else { oracleP = null; hideOracle(); await respond(msg, a, sense); }
-    mente.train(250).catch(()=>{});
+    else if (confirmed){ oracleP = null; hideOracle();
+      const W = { ironia:"ironia", tristezza:"tristezza", rabbia:"rabbia", paura:"paura" }[confirmed.k];
+      await say(confirmed.yes ? (confirmed.k==="ironia" ? "ahah. lo sapevo" : "mi dispiace. sono qui") : "ok. ora ho capito meglio", { emo: confirmed.yes && confirmed.k!=="ironia" ? "sad" : "happy", raw:true, src:"chiede", cap:`ha imparato qualcosa sulla ${W}` }); }
+    else { oracleP = null; hideOracle(); await respond(msg, a, sense, feel); }
+    nucleo.impara(200).catch(()=>{});
     await checkPhase();
     if (S.energy.used >= ENERGY[phase()]) await sleepNow();
     save(); render();
@@ -647,19 +683,25 @@ function showLog(){
 /* la mente: mappa 2D degli embedding che la rete ha imparato da sola */
 let mapRun = false;
 async function showMind(){
-  const i = mente.info;
-  openSheet("mente", `<p class="muted">una rete neurale nata vuota e allenata solo con le tue frasi, qui sul telefono. nessun server, nessuna libreria.</p>
+  const i = nucleo.info, last = i && i.last;
+  const grow = i && i.growth && i.growth.length ? [i.growth[0].from, ...i.growth.map(g=>g.to)].join(" → ") : (i ? String(i.H) : "—");
+  const N = v => v == null ? "—" : Number(v).toLocaleString("it-IT");
+  openSheet("mente", `<p class="muted">una rete neurale ricorrente nata vuota e cresciuta solo con te, qui sul telefono. nessun server, nessuna libreria: ogni riga di matematica è scritta a mano.</p>
     <canvas id="map"></canvas><p class="muted" style="text-align:center;margin:0">le parole vicine, per lui, vogliono dire cose simili. l'ha capito da solo.</p>
-    <canvas id="spark"></canvas>
-    <div class="row"><span>parametri</span><span class="num">${i ? i.params.toLocaleString("it-IT") : "—"}</span></div>
-    <div class="row"><span>passi di apprendimento</span><span class="num">${i ? i.steps.toLocaleString("it-IT") : "—"}</span></div>
-    <div class="row"><span>confusione</span><span class="num">${i && i.loss!=null ? i.loss.toFixed(3) : "—"}</span></div>
-    <div class="row"><span>frasi da cui impara</span><span class="num">${S.mem.corpus.length}</span></div>
-    ${phase()<3 ? `<p class="muted" style="margin-top:14px">la userà per parlare dalla fase «frase». intanto ascolta.</p>` : ""}
-    <button class="btn" id="mLog">ricordi</button>`);
-  $("#mLog").onclick = showLog;
-  const sp = $("#spark"); if (i && i.hist && i.hist.length > 1){ const r = sp.getBoundingClientRect(), d = Math.min(3, devicePixelRatio||1); sp.width = r.width*d; sp.height = r.height*d; const g = sp.getContext("2d"); const h = i.hist, mx = Math.max(...h), mn = Math.min(...h);
-    g.strokeStyle = "#8a8a8e"; g.lineWidth = 1.5*d; g.beginPath(); h.forEach((v,k)=>{ const x = k/(h.length-1)*sp.width, y = sp.height*.1 + (1-(v-mn)/Math.max(.001,mx-mn))*sp.height*.8; k ? g.lineTo(x,y) : g.moveTo(x,y); }); g.stroke(); }
+    <canvas id="spark"></canvas><p class="muted" style="text-align:center;margin:0 0 6px">quanto capisce le emozioni, misurato su frasi che non ha mai visto</p>
+    <div class="row"><span>neuroni</span><span class="num">${grow}</span></div>
+    <div class="row"><span>parametri</span><span class="num">${N(i && i.params)}</span></div>
+    <div class="row"><span>comprensione emotiva</span><span class="num">${last && last.capisce != null ? Math.round(last.capisce*100)+"%" : "—"}</span></div>
+    <div class="row"><span>frasi lette</span><span class="num">${N(i && i.steps)}</span></div>
+    <div class="row"><span>frasi tue da cui impara</span><span class="num">${N(i && i.frasi)}</span></div>
+    <div class="row"><span>dove pensa</span><span>${nucleo.mode}</span></div>
+    ${phase()<3 ? `<p class="muted" style="margin-top:14px">la userà per parlare dalla fase «frase». intanto ascolta e impara a sentire.</p>` : ""}
+    <button class="btn" id="mChar">come ti vede</button><button class="btn" id="mLog">ricordi</button>`);
+  $("#mLog").onclick = showLog; $("#mChar").onclick = showCarattere;
+  const sp = $("#spark"), hs = i && i.hist ? i.hist.filter(h => h.capisce != null).map(h => h.capisce) : [];
+  if (hs.length > 1){ const r = sp.getBoundingClientRect(), d = Math.min(3, devicePixelRatio||1); sp.width = r.width*d; sp.height = r.height*d; const g = sp.getContext("2d");
+    g.strokeStyle = "#f2f2f2"; g.lineWidth = 1.5*d; g.beginPath(); hs.forEach((v,k)=>{ const x = k/(hs.length-1)*sp.width, y = sp.height*.9 - v*sp.height*.8; k ? g.lineTo(x,y) : g.moveTo(x,y); }); g.stroke();
+    (i.growth||[]).forEach(gr => { const k = i.hist.findIndex(h => h.H >= gr.to); if (k < 0) return; const x = k/(i.hist.length-1)*sp.width; g.fillStyle = "#e5161f"; g.beginPath(); g.arc(x, sp.height*.5, 3*d, 0, 7); g.fill(); }); }
   const words = contentWords(1).sort((a,b)=>S.words[b].c-S.words[a].c).slice(0, 36);
   if (!mente.ready || words.length < 4) return;
   let pts = []; try{ pts = await mente.call("map", { words }); }catch(e){ return; }
@@ -685,6 +727,17 @@ async function showMind(){
     requestAnimationFrame(frame);
   })(t0);
 }
+function showCarattere(){
+  const C = analizza(S);
+  if (C.n < 5){ openSheet("come ti vede", `<p class="muted">ha bisogno di conoscerti ancora un po'. parlagli e torna più avanti.</p>`); return; }
+  const bar = v => { const n = Math.round(v*10); return "●".repeat(n) + "○".repeat(10-n); };
+  const days = C.days.map(d => `<i title="${dstr(d.t)}" style="display:inline-block;width:10px;height:10px;border-radius:50%;margin:2px;background:${d.v<-.2?"#e5161f":"#f2f2f2"};opacity:${(.25+Math.min(1,Math.abs(d.v))*.75).toFixed(2)}"></i>`).join("");
+  openSheet("come ti vede", `<p class="muted">non è un test: è quello che ha capito di te da ${C.n} messaggi, con le emozioni stimate dalla sua rete. più gli parli, più diventa preciso (sicurezza ${Math.round((C.traits[0]||{conf:0}).conf*100)}%).</p>
+    ${C.traits.map(t => `<div class="row"><span>${t.k}<br><small class="muted">${t.why}</small></span><span style="letter-spacing:.08em;font-size:10px">${bar(t.v)}</span></div>`).join("")}
+    ${C.insights.length ? `<p class="muted" style="margin-top:16px">ha notato che</p>${C.insights.map(x => `<div class="row"><span>${esc(x.x)}</span><span></span></div>`).join("")}` : ""}
+    <p class="muted" style="margin-top:16px">il tuo umore, giorno per giorno</p><div>${days}</div>
+    <p class="muted" style="margin-top:6px">bianco: sereno · rosso: giù</p>`);
+}
 let resetArm = 0;
 function showMenu(){
   const tr = S.traits, bars = Object.keys(tr).map(k=>`<div class="row"><span>${k}</span><span>${"●".repeat(Math.round((tr[k]+1)*2.5))}${"○".repeat(5-Math.round((tr[k]+1)*2.5))}</span></div>`).join("");
@@ -704,7 +757,7 @@ function showMenu(){
   const ml = $("#mLog2"); if (ml) ml.onclick = showLog;
   $("#mCopy").onclick = async ()=>{ try{ await navigator.clipboard.writeText(S.id); $("#mMsg").textContent="copiato"; }catch(e){ $("#mMsg").textContent="copialo a mano: "+fmtId(S.id); } };
   $("#mSound").onclick = ()=>{ S.sound=!S.sound; save(); showMenu(); };
-  $("#mReset").onclick = ()=>{ if (Date.now()-resetArm < 3000){ leaving = true; clearTimeout(saveT); $("#mReset").textContent="cancello…"; const done=()=>{ ["impronta_state","impronta_id","impronta_dev","impronta_net"].forEach(k=>ls.del(k)); location.reload(); }; if (fb) Promise.race([fb.set(fb.ref(fb.db, ROOT+"/"+S.id), null), wait(3000)]).catch(()=>{}).finally(done); else done(); } else { resetArm=Date.now(); $("#mReset").textContent="tocca di nuovo per cancellarlo"; } };
+  $("#mReset").onclick = ()=>{ if (Date.now()-resetArm < 3000){ leaving = true; clearTimeout(saveT); $("#mReset").textContent="cancello…"; const done=async ()=>{ ["impronta_state","impronta_id","impronta_dev","impronta_net"].forEach(k=>ls.del(k)); try{ await nucleo.dimentica(); }catch(_){} location.reload(); }; if (fb) Promise.race([fb.set(fb.ref(fb.db, ROOT+"/"+S.id), null), wait(3000)]).catch(()=>{}).finally(done); else done(); } else { resetArm=Date.now(); $("#mReset").textContent="tocca di nuovo per cancellarlo"; } };
   $("#mLink").onclick = async ()=>{
     const code = $("#mCode").value.toUpperCase().replace(/[^A-Z0-9]/g,"");
     if (code.length!==16){ $("#mMsg").textContent="il codice ha 16 caratteri"; return; }
@@ -712,7 +765,7 @@ function showMenu(){
     $("#mMsg").textContent="cerco…";
     const r = await loadRemote(code);
     if (!r){ $("#mMsg").textContent="nessun compagno con questo codice"; return; }
-    leaving = true; ID = code; ls.set("impronta_id", ID); ls.set("impronta_state", JSON.stringify(normalize(r, ID))); ls.del("impronta_net"); location.reload();
+    leaving = true; ID = code; ls.set("impronta_id", ID); ls.set("impronta_state", JSON.stringify(normalize(r, ID))); nucleo.dimentica().finally(()=>location.reload());
   };
 }
 $("#menuBtn").onclick = showMenu;
@@ -729,21 +782,57 @@ function showLab(){
     if (k==="d1"||k==="d7"||k==="h8"){ S.lastSeen = now(); save(); devOffset += k==="d1"?DAY:k==="d7"?7*DAY:8*HOUR; ls.set("impronta_dev", devOffset); closeSheet(); ghostFired=false; queue(welcome); }
     if (k==="wake"){ S.energy.sleepUntil=0; S.energy.used=0; setEmo("neutral"); save(); render(); closeSheet(); }
     if (k==="ph"){ S.forcePhase = Math.min(4, phase()+1); save(); closeSheet(); queue(checkPhase); }
-    if (k==="dream"){ closeSheet(); F.dream = 1; for (let i=0;i<8;i++){ const inf = await mente.train(500); if (inf) setCap(`sogna · confusione ${inf.loss.toFixed(2)}`); await wait(250); } F.dream = 0; mente.persist(); }
+    if (k==="dream"){ closeSheet(); dream(10000, true); }
     if (k==="t0"){ devOffset=0; ls.set("impronta_dev",0); location.reload(); }
   });
 }
 
-/* ================= AVVIO ================= */
+/* ================= AVVIO (schermata di accensione) ================= */
+async function boot(){
+  const el = $("#boot"), c = $("#bootc"), g = c.getContext("2d"), logo = $("#bootl"), st = $("#boots");
+  let skip = false; el.addEventListener("pointerdown", () => { skip = true; }, { once:true });
+  const d = Math.min(3, devicePixelRatio||1), W = c.getBoundingClientRect().width*d; c.width = c.height = W;
+  const s = W/N, pts = CELLS.map(cl => ({ cl, x: Math.random()*W*3 - W, y: Math.random()*W*3 - W, dl: Math.random()*500 }));
+  const t0 = performance.now(); let done = false;
+  (function frame(t){
+    if (done) return; const k = t - t0; g.clearRect(0,0,W,W);
+    for (const p of pts){ const e = smooth((k - p.dl)/900), tx = (p.cl.x+.5)*s, ty = (p.cl.y+.5)*s;
+      const x = p.x + (tx - p.x)*e, y = p.y + (ty - p.y)*e, ring = p.cl.ring, pulse = k > 1300 ? .5+.5*Math.sin(k/300 - p.cl.d*.6) : 0;
+      g.globalAlpha = (.15 + .85*e) * (ring ? .9 : .18 + .5*pulse*(p.cl.d < 4 ? 1 : .3)); g.fillStyle = "#f2f2f2";
+      g.beginPath(); g.arc(x, y, s*.34, 0, 7); g.fill(); }
+    requestAnimationFrame(frame); })(t0);
+  const sleepOr = async ms => { const e = performance.now() + ms; while (performance.now() < e && !skip) await wait(30); };
+  await sleepOr(900);
+  for (const ch of "impronta."){ const sp = document.createElement("span"); sp.textContent = ch; logo.appendChild(sp); if (!skip){ tone(400+Math.random()*500,.03,"triangle",.012); await wait(45); } }
+  const line = async (txt) => { st.innerHTML += txt + "\n"; if (!skip) await wait(170); };
+  await line("nucleo <b>2.0</b> · tutto in locale");
+  if (S.born){
+    await line(`memoria · <b>${known()}</b> parole · ${S.mem.corpus.length} frasi`);
+    const t1 = performance.now(); while (!nucleo.ready && performance.now() - t1 < 1500 && !skip) await wait(50);
+    const i = nucleo.info;
+    await line(i ? `rete · <b>${i.H}</b> neuroni · ${Number(i.params).toLocaleString("it-IT")} parametri` : "rete · in risveglio");
+    await line(`istinto · ${AFFETTI.length} emozioni${i && i.last && i.last.capisce != null ? ` · capisce ${Math.round(i.last.capisce*100)}%` : ""}`);
+    await line(`${S.name ? S.name.toLowerCase() : "· · ·"} si sta svegliando…`);
+  } else {
+    await line("nessun ricordo");
+    await line("in attesa di nascere…");
+  }
+  await sleepOr(650);
+  el.classList.add("out"); done = true; setTimeout(() => el.remove(), 800);
+}
+
 (async ()=>{
   requestAnimationFrame(draw);
   render();
   setHint(S.born ? "" : "…");
+  if (S.born) mente.start();
+  const booting = boot();
   await Promise.race([initFB(), wait(3500)]);
   if (fb){ const r = await loadRemote(ID); if (r && stamp(r.updatedAt) > stamp(S.updatedAt)){ S = normalize(r, ID); buildCells(); ls.set("impronta_state", JSON.stringify(S)); } }
   render();
-  mente.start();
-  if (!S.born){ setHint("tieni premuto"); return; }
+  if (!S.born) mente.start();
+  await booting;
+  if (!S.born){ document.body.classList.add("unborn"); setHint("tieni premuto"); return; }
   const lastC = S.log.filter(l=>l.w==="c").slice(-1)[0];
   if (lastC){ if (lastC.g){ said.appendChild(glyphEl(lastC.x, {stagger:0})); } else said.textContent = lastC.x; said.style.opacity = .5; setTimeout(()=>said.style.opacity="", 1200); }
   if (S.awaitName) setHint("dagli un nome");
