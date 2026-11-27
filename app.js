@@ -264,6 +264,7 @@ function setHint(t, red){ hint.style.opacity = 0; setTimeout(()=>{ hint.innerHTM
 function setCap(t){ capEl.style.opacity = 0; setTimeout(()=>{ capEl.textContent = t||""; capEl.style.opacity = 1; }, 300); }
 async function clearSaid(){ if (!said.childNodes.length) return; said.classList.add("out"); await wait(260); said.innerHTML = ""; said.className = ""; }
 function render(){
+  recharge();
   const p = phase();
   $("#meta").textContent = S.born ? `giorno ${dayN()} · ${PHASES[p]}` : "";
   $("#cname").textContent = S.name || (S.born ? "· · ·" : "");
@@ -272,7 +273,7 @@ function render(){
   inp.maxLength = LIMITS[p];
   const off = !S.born || isAsleep();
   $("#bar").classList.toggle("off", off); inp.disabled = off; $("#send").disabled = off;
-  inp.placeholder = !S.born ? "" : isAsleep() ? `dorme · si sveglia alle ${hhmm(S.energy.sleepUntil-devOffset)}` : S.awaitName ? "dagli un nome" : "insegnagli qualcosa";
+  inp.placeholder = !S.born ? "" : isAsleep() ? `dorme · fino alle ${hhmm(S.energy.sleepUntil-devOffset)} · tieni premuto sul volto` : S.awaitName ? "dagli un nome" : "insegnagli qualcosa";
   updCount();
   const b1=$("#bWords"), b2=$("#bDiary"), b3=$("#bMind"); if(b1) b1.onclick=showWords; if(b2) b2.onclick=showDiary; if(b3) b3.onclick=showMind;
 }
@@ -287,7 +288,7 @@ async function typeOut(text){
     const ch = text[i];
     if (ch === " ") { said.appendChild(document.createTextNode(" ")); F.mouth = ""; F.talk = .3; }
     else { const sp = document.createElement("span"); sp.className = "ch"; sp.textContent = ch; said.appendChild(sp); F.talk = 1; F.mouth = ch.toLowerCase(); if (i%2===0) tone(voiceBase()+rnd()*160, .025, "triangle", .016); }
-    await wait(26 + rnd()*28 + (".,?!".includes(ch) ? 160 : 0));
+    await wait((26 + rnd()*28 + (".,?!".includes(ch) ? 160 : 0)) * ((S.drowsyUntil||0) > now() ? 1.7 : 1));
   }
   F.talk = 0; F.mouth = "";
 }
@@ -359,7 +360,8 @@ async function respond(msg, a, sense, feel){
       if (nn[0] && nn[0][1] > .55){ net.pairs = [[seeds[0], nn[0][0]]]; S.sparks["near_"+seeds[0]] = 1; }
     }
   }
-  const r = await B.reply(S, a, { phase:p, now:now(), rnd, net, feel, insight, sense:{ ...sense, used:sessionSense, msgN:sessionMsgs } });
+  const mood = (S.grumpyUntil||0) > now() ? "grumpy" : (S.drowsyUntil||0) > now() ? "drowsy" : null;
+  const r = await B.reply(S, a, { phase:p, now:now(), rnd, net, feel, insight, mood, sense:{ ...sense, used:sessionSense, msgN:sessionMsgs } });
   const set = r.set || {};
   let cap = r.cap || "";
   if (set.def){ S.defs[set.def.w] = set.def.x; S.mem.ask = null; const W = S.words[set.def.w]; if (W) W.val = B.analyze(set.def.x).sv; }
@@ -374,7 +376,7 @@ async function respond(msg, a, sense, feel){
   if (r.src === "senso" && a.irony && !S.sparks.ironyCap){ S.sparks.ironyCap = 1; cap = "ha capito che era ironia"; }
   await say(r.x, { glyph:r.glyph, emo:r.emo, raw:r.raw, cap, src:r.src });
   // se non è sicuro di cosa provi, te lo chiede: la tua risposta diventa una lezione
-  if (feel && feel._incerto && p >= 3 && ["tristezza","rabbia","paura"].includes(feel._top) && !S.mem.confirm && rnd() < .35 && r.src !== "senso" && S.user.msgs - (S.mem.lastAskMsg ?? -99) >= 3){
+  if (feel && feel._incerto && p >= 3 && ["tristezza","rabbia","paura"].includes(feel._top) && !a.q && !a.ask && (a.sv < 0 || a.emojis.length) && !S.mem.confirm && rnd() < .35 && r.src !== "senso" && S.user.msgs - (S.mem.lastAskMsg ?? -99) >= 3){
     S.mem.lastAskMsg = S.user.msgs;
     const Q = { tristezza:"sei triste?", rabbia:"sei arrabbiato?", paura:"hai paura?" };
     S.mem.confirm = { k: feel._top, x: msg, t: now() };
@@ -408,27 +410,104 @@ async function reveal(){
   const box = $("#rv");
   for (const g of S.glyphs.slice(0,6)){ const e=document.createElement("div"); e.className="entry"; e.innerHTML=`<time>${dstr(g.t)} · ${hhmm(g.t)}</time>`; e.appendChild(glyphEl(g.x,{cell:5})); const tr=document.createElement("div"); tr.style.marginTop="8px"; e.appendChild(tr); box.appendChild(e); await wait(600); for(const ch of "«"+g.x+"»"){ tr.textContent+=ch; await wait(40); } }
 }
-let dreaming = false;
-async function dream(ms = 14000, force = false){
-  if (!nucleo.ready || dreaming || S.mem.corpus.length < 4) return;
-  dreaming = true; F.dream = 1; let first = null;
-  await nucleo.sogna(ms, (r) => {
-    if (!r || r.loss == null) return; if (first == null) first = r.loss;
-    setCap(`sogna · neuroni ${r.H} · confusione ${r.loss.toFixed(2)}${first ? ` (era ${first.toFixed(2)})` : ""}`);
-  }, () => (!force && !isAsleep()) || document.hidden);
-  F.dream = 0; dreaming = false;
-  const d = (await mente.speak([], 30))[0];
-  if (d){ S.diary.push({t:now(), x:`ho sognato: «${d.x}»`}); S.diaryUnread++; save(); render(); setCap("ha sognato. è nel diario"); }
+/* ================= SONNO =================
+   Dorme quando finisce l'energia. Mentre dorme SOGNA: allena davvero la sua rete sulle tue frasi.
+   Il pisolino dura di più se ha tante cose nuove da imparare; quando ha finito si sveglia da solo.
+   Puoi svegliarlo tenendo premuto sul volto: il suo umore dipende da quanto ha riposato,
+   dall'ora, da quante volte l'hai già svegliato e dal suo carattere. */
+const NAP = [15, 20, 25, 35, 45];             // minuti base per fase
+const RECHARGE = 5*60e3;                      // da sveglio recupera un'unità di energia ogni 5 minuti
+let dreaming = false, wakingUp = false;
+function recharge(){
+  const E = S.energy, t = now();
+  if (isAsleep() || !E.rt){ E.rt = t; return; }
+  const k = Math.floor((t - E.rt)/RECHARGE); if (k > 0){ E.used = Math.max(0, E.used - k); E.rt += k*RECHARGE; }
+}
+const sleepFrac = () => { const E = S.energy; return E.sleepStart ? clamp((now() - E.sleepStart)/Math.max(1, E.sleepUntil - E.sleepStart), 0, 1) : 1; };
+const rested = () => { const E = S.energy; return clamp(.6*Math.min(1, (E.dreamMs||0)/Math.max(1, E.need||1)) + .4*sleepFrac(), 0, 1); };
+function dreamLayer(){ let d = $("#dreams"); if (!d){ d = document.createElement("div"); d.id = "dreams"; $("#talk").appendChild(d); } return d; }
+async function showDreamLine(p){
+  const layer = dreamLayer(), el = document.createElement("div"); el.className = "dl";
+  if (p >= 3){ const c = (await nucleo.parla([], 10))[0]; if (!c) return; el.textContent = c.x; }
+  else if (p >= 1){ const ws = contentWords(1); if (!ws.length) return; el.textContent = Array.from({length: 1 + Math.floor(rnd()*3)}, () => pick(ws)).join(" "); }
+  else el.appendChild(glyphEl(pick(G.diary), { cell:3, stagger:0 }));
+  el.style.left = (10 + rnd()*50) + "%";
+  layer.appendChild(el); setTimeout(() => el.remove(), 7000);
+}
+function clearDreams(){ const d = $("#dreams"); if (d) d.innerHTML = ""; }
+async function dream({ maxMs = Infinity, force = false, catchup = false } = {}){
+  if (!nucleo.ready || dreaming) return;
+  dreaming = true; F.dream = 1;
+  const E = S.energy, p = phase(), t0 = Date.now(); let first = null, lastLine = 0;
+  if (!E.need) E.need = 30000;
+  while (Date.now() - t0 < maxMs && (force || catchup || isAsleep()) && !document.hidden && !wakingUp){
+    const ms = catchup ? 700 : 350;
+    const r = await nucleo.impara(ms);
+    E.dreamMs = (E.dreamMs || 0) + ms * (catchup ? 6 : 1);         // al recupero il tempo è compresso
+    if (r && r.loss != null){ if (first == null) first = r.loss;
+      setCap(`${catchup ? "riordina i sogni" : "sogna"} · neuroni ${r.H} · confusione ${r.loss.toFixed(2)}${first ? ` (era ${first.toFixed(2)})` : ""}`); }
+    if (!catchup && Date.now() - lastLine > 3200){ lastLine = Date.now(); showDreamLine(p); }
+    if (!catchup && !force && E.dreamMs >= E.need && sleepFrac() > .15) break;   // ha finito di imparare
+    await wait(catchup ? 50 : 850);
+  }
+  F.dream = 0; dreaming = false; clearDreams(); await nucleo.salva();
+  if (!E.dreamt && E.dreamMs > 4000 && p >= 3){
+    const d = (await nucleo.parla([], 30))[0];
+    if (d){ E.dreamt = 1; S.diary.push({t:now(), x:`ho sognato: «${d.x}»`}); S.diaryUnread++; render(); }
+  }
+  save();
+  if (!force && !catchup && isAsleep() && E.dreamMs >= E.need && sleepFrac() > .15) queue(()=>wakeNatural("ha finito di sognare"));
 }
 async function sleepNow(){
-  const p = phase(), ctx = B.makeCtx(S, p, now(), rnd);
+  const p = phase(), ctx = B.makeCtx(S, p, now(), rnd), E = S.energy;
   if (p>=2 && !S.promise && now()-(S.sparks.poemAt||0) > DAY){ S.promise = now(); await say(B.pickTemplate(ctx,"promise")||"...", {emo:"sad", raw:true}); }
   else if (p>=2) await say(B.pickTemplate(ctx,"sleep")||"...", {emo:"sleep", raw:true});
   else await say(pick(G.sleep), {glyph:true, emo:"sleep"});
-  S.energy.sleepUntil = now() + 3*HOUR; S.energy.used = 0;
+  const fresh = Math.max(0, S.user.msgs - (E.msgsAtSleep || 0)); E.msgsAtSleep = S.user.msgs;
+  const mins = NAP[p] + Math.min(20, fresh*.6);
+  Object.assign(E, { sleepStart: now(), sleepUntil: now() + mins*60e3, need: clamp(fresh*1600, 15000, 120000), dreamMs: 0, dreamt: 0 });
   setEmo("sleep"); [400,300,200].forEach((f,i)=>tone(f,.25,"sine",.03,i*.25));
-  setHint("si è addormentato"); save(); render();
-  if (p >= 3) dream();
+  setHint("si è addormentato · tieni premuto sul volto per svegliarlo"); save(); render();
+  dream();
+}
+/* riapri l'app: se ha dormito mentre era chiusa, recupera i sogni persi */
+async function sleepResume(){
+  const E = S.energy;
+  if (E.sleepStart && (E.dreamMs||0) < E.need && nucleo.ready){
+    const missing = E.need - (E.dreamMs||0);
+    await dream({ catchup:true, maxMs: Math.min(20000, missing/6) });
+  }
+  if (isAsleep()){ setHint("dorme · tieni premuto sul volto per svegliarlo"); dream(); }
+}
+async function wakeNatural(why){
+  const p = phase(), E = S.energy;
+  E.sleepUntil = 0; E.sleepStart = 0; E.used = 0; E.rt = now();
+  S.drowsyUntil = 0; S.grumpyUntil = 0;
+  setEmo("surprised", 1200); tone(520,.08,"triangle",.03); tone(780,.1,"triangle",.03,.1); ripple(.5, 55);
+  render(); save();
+  await say(p >= 2 ? pick(["eccomi. ho sognato tanto","mi sono svegliato. ho riordinato le tue parole","buongiorno. ho sognato te"]) : pick(G.greet), { glyph: p < 2, emo:"happy", raw:true, src:"sonno", cap: why ? `${why}: si è svegliato riposato` : "" });
+}
+async function wakeForced(){
+  if (wakingUp || !isAsleep()) return;
+  wakingUp = true;
+  const p = phase(), E = S.energy, r = rested(), h = new Date(now()).getHours(), night = h < 7 || h >= 23;
+  E.wakes = (E.wakes || []).filter(t => now() - t < 6*HOUR); const repeat = E.wakes.length; E.wakes.push(now());
+  const g = clamp(.65*(1-r) + (night ? .2 : 0) + .15*repeat - .25*S.traits.calma - .15*S.traits.calore + .3*S.hurt - .05, 0, 1);
+  const mood = rnd() < g ? "grumpy" : r < .6 ? "sleepy" : "fine";
+  E.sleepUntil = 0; E.sleepStart = 0; E.rt = now();
+  E.used = Math.round(ENERGY[p] * clamp(.7 - .7*r, 0, .7));        // svegliato presto = meno energia
+  S.drowsyUntil = now() + (1-r)*20*60e3;
+  S.grumpyUntil = mood === "grumpy" ? now() + (5 + 10*g)*60e3 : 0;
+  if (mood === "grumpy") S.traits.malinconia = clamp(S.traits.malinconia + .01, -1, 1);
+  F.dream = 0; clearDreams(); buzz([30,60,30]);
+  render(); save();
+  const why = r < .35 ? "era a metà del sogno" : night ? "è notte" : repeat ? `l'hai già svegliato ${repeat === 1 ? "una volta" : repeat + " volte"}` : "ha riposato abbastanza";
+  if (p < 2) await say(pick(G.sleep), { glyph:true, emo: mood === "grumpy" ? "hurt" : "sleepy", src:"sonno", cap:`${why}` });
+  else if (mood === "grumpy") await say(pick(["perché mi hai svegliato?","uff. stavo sognando","mmh. lasciami dormire... va bene, sono qui"]), { emo:"hurt", raw:true, src:"sonno", cap:`è un po' scontroso · ${why}` });
+  else if (mood === "sleepy") await say(pick(["mmh... ho sonno","eccomi... più o meno","ahhh. ciao. ho ancora sonno"]), { emo:"sleepy", raw:true, src:"sonno", cap:`è assonnato · ${why}` });
+  else await say(pick(["oh. ciao. avevo quasi finito di sognare","eccomi! ho sognato tanto"]), { emo:"happy", raw:true, src:"sonno", cap:`${why}` });
+  if (mood !== "fine") setEmo("sleepy");
+  wakingUp = false;
 }
 function showPoem(){
   const src = S.quotes.length>=3 ? S.quotes : S.log.filter(l=>l.w==="c"&&!l.g).map(l=>({x:l.x}));
@@ -468,8 +547,9 @@ async function welcome(){
     }
     if (S.diary.length>40) S.diary.splice(0, S.diary.length-40);
   }
-  if (isAsleep()){ setEmo("sleep"); render(); save(); if (p>=3) dream(); return; }
-  if (S.energy.sleepUntil && !isAsleep()) S.energy.sleepUntil = 0;
+  recharge();
+  if (isAsleep()){ setEmo("sleep"); render(); save(); sleepResume(); return; }
+  if (S.energy.sleepUntil && !isAsleep()){ await sleepResume(); Object.assign(S.energy, { sleepUntil:0, sleepStart:0, used:0, rt:now() }); setHint("si è svegliato riposato mentre non c'eri"); }
   render(); favicon();
   const g = Math.round(growth()*100);
   if (S.litSeen && g > S.litSeen){ ripple(.6, 60); setHint("è cresciuto mentre non c'eri"); }
@@ -520,8 +600,11 @@ const stage = $("#stage");
 // niente menu "copia / seleziona" con la pressione lunga (tranne nel campo di testo)
 document.addEventListener("contextmenu", e => { if (!e.target.closest("input")) e.preventDefault(); });
 document.addEventListener("selectstart", e => { if (!e.target.closest || !e.target.closest("input")) e.preventDefault(); });
+let wakeT = 0;
 stage.addEventListener("pointerdown", e=>{
   if (!S.born) return;
+  if (isAsleep()){ setHint("lo stai svegliando…"); F.blink = 1; buzz(20); clearTimeout(wakeT);
+    wakeT = setTimeout(()=>{ F.blink = 0; queue(wakeForced); }, 900); return; }
   if(!isAsleep()){ setEmo("happy",900); tone(880,.05,"triangle",.03); buzz(15); cv.classList.add("poke"); setTimeout(()=>cv.classList.remove("poke"), 90); ripple(.25, 40); } });
 // per nascere si può tenere premuto ovunque sullo schermo
 const mainEl = document.querySelector("main");
@@ -529,7 +612,7 @@ mainEl.addEventListener("pointerdown", e=>{
   if (S.born || holding || !document.body.classList.contains("unborn")) return;
   try{ mainEl.setPointerCapture(e.pointerId); }catch(_){}
   holding=true; holdStart=performance.now(); audio(); setHint("ancora…"); holdTick(); });
-const release = ()=>{ if (!holding) return; holding=false; cancelAnimationFrame(holdRaf); const decay=setInterval(()=>{ F.hold=Math.max(0,F.hold-.04); if(F.hold<=0) clearInterval(decay); },30); setHint("tieni premuto. di più."); };
+const release = ()=>{ if (wakeT){ clearTimeout(wakeT); wakeT = 0; F.blink = 0; if (isAsleep() && !wakingUp) setHint("dorme ancora · tieni premuto di più"); } if (!holding) return; holding=false; cancelAnimationFrame(holdRaf); const decay=setInterval(()=>{ F.hold=Math.max(0,F.hold-.04); if(F.hold<=0) clearInterval(decay); },30); setHint("tieni premuto. di più."); };
 ["pointerup","pointercancel"].forEach(ev=>{ mainEl.addEventListener(ev, release); window.addEventListener(ev, release); });
 
 /* ================= SCHERMO INTERO ================= */
@@ -700,14 +783,14 @@ setInterval(()=>{
     idleFired = Date.now(); F.attn = true; F.tx=0; F.ty=0;
     queue(()=> p>=3 ? say(B.pickTemplate(ctx,"idle"), {emo:"curious", raw:true}) : say(pick(G.idle), {glyph:true, emo:"curious"}));
   }
-  if (S.energy.sleepUntil && !isAsleep()){ S.energy.sleepUntil = 0; setEmo("surprised",1500); setHint("si è svegliato"); render(); save(); }
+  if (S.energy.sleepUntil && !isAsleep() && !wakingUp && !dreaming) queue(()=>wakeNatural("ha dormito abbastanza"));
 }, 1000);
 document.addEventListener("visibilitychange", ()=>{
   if (document.hidden){ if (S.born){ S.lastSeen = now(); save(); pushRemote(); mente.persist(); } }
   else {
     if (fb) loadRemote(S.id).then(r=>{ if (r && stamp(r.updatedAt) > stamp(S.updatedAt) + 2000 && !busy){ clearTimeout(saveT); ls.set("impronta_state", JSON.stringify(normalize(r, S.id))); location.reload(); } });
     if (S.born && now()-S.lastSeen > 20*60e3){ ghostFired=false; queue(welcome); }
-    else if (isAsleep() && phase()>=3) dream();
+    else if (isAsleep()) sleepResume();
   }
 });
 
@@ -833,14 +916,15 @@ $("#logo").addEventListener("click", ()=>{ taps = taps.filter(t=>Date.now()-t<20
 function showLab(){
   openSheet("laboratorio", `<p class="muted">solo per i test</p>
   <button class="btn" data-l="d1">+1 giorno</button><button class="btn" data-l="d7">+7 giorni</button><button class="btn" data-l="h8">+8 ore</button>
-  <button class="btn" data-l="wake">sveglia</button><button class="btn" data-l="ph">fase +1</button><button class="btn" data-l="dream">sogna ora</button><button class="btn" data-l="t0">orologio vero</button>
+  <button class="btn" data-l="wake">sveglia</button><button class="btn" data-l="ph">fase +1</button><button class="btn" data-l="dream">sogna ora</button><button class="btn" data-l="sleep">dormi</button><button class="btn" data-l="t0">orologio vero</button>
   <p class="muted" style="margin-top:12px">ora simulata: ${new Date(now()).toLocaleString("it-IT")}</p>`);
   $("#pane").querySelectorAll("[data-l]").forEach(b=>b.onclick=async ()=>{
     const k=b.dataset.l;
     if (k==="d1"||k==="d7"||k==="h8"){ S.lastSeen = now(); save(); devOffset += k==="d1"?DAY:k==="d7"?7*DAY:8*HOUR; ls.set("impronta_dev", devOffset); closeSheet(); ghostFired=false; queue(welcome); }
-    if (k==="wake"){ S.energy.sleepUntil=0; S.energy.used=0; setEmo("neutral"); save(); render(); closeSheet(); }
+    if (k==="wake"){ Object.assign(S.energy, { sleepUntil:0, sleepStart:0, used:0, rt:now() }); S.drowsyUntil = 0; S.grumpyUntil = 0; setEmo("neutral"); save(); render(); closeSheet(); }
     if (k==="ph"){ S.forcePhase = Math.min(4, phase()+1); save(); closeSheet(); queue(checkPhase); }
-    if (k==="dream"){ closeSheet(); dream(10000, true); }
+    if (k==="dream"){ closeSheet(); dream({ maxMs:10000, force:true }); }
+    if (k==="sleep"){ closeSheet(); if (!isAsleep()) queue(sleepNow); }
     if (k==="t0"){ devOffset=0; ls.set("impronta_dev",0); location.reload(); }
   });
 }

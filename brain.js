@@ -451,7 +451,7 @@ function markov(ctx, seed){
 /* ---------- risposta ---------- */
 /* Restituisce {x, glyph, emo, raw, cap, set} */
 export async function reply(S, a, opt){
-  const { phase:p, now, rnd, mind, net, sense, feel, insight } = opt;
+  const { phase:p, now, rnd, mind, net, sense, feel, insight, mood } = opt;
   ensure(S);
   const ctx = makeCtx(S, p, now, rnd), pick = ctx.pick;
   // la mente semantica capisce il senso anche quando le regole non bastano
@@ -623,7 +623,7 @@ export async function reply(S, a, opt){
   // 5) curiosità: una parola nuova → chiede cosa vuol dire (lo insegna lui a se stesso)
   const unknownWords = a.content.filter(w => S.words[w] && S.words[w].c <= 1 && !S.defs[w] && w.length >= 5 && !SENTword(w) && !COMMON.has(w) && !NEGCTX.test(" "+w+" ") && !PEOPLE.includes(w) && !/(are|ere|ire|ato|ata|uto|ito|ando|endo|mente|issim)$/.test(w) && !innate(4).has(w));
   const prevC = S.log[S.log.length-2];
-  const irSusp = ironyRule(a).p > .25 || a.irony;
+  const irSusp = ironyRule(a).p > .25 || a.irony || (S.user.msgs - (S.mem.curAt ?? -99)) < 4;   // al massimo una domanda ogni 4 messaggi
   if (prevC && prevC.w === "c" && a.rtoks.length <= 3 && !a.q && !a.ask && p>=2 && !irSusp && !/(scherz|ironi)/.test(a.low)){   // "bravissimo" detto a lui per la prima volta
     const fresh = a.content.filter(w => S.words[w] && S.words[w].c <= 1 && !S.defs[w] && w.length >= 4 && !COMMON.has(w) && !innate(4).has(w));
     if (fresh.length){ const w = fresh[0]; add(p>=3 ? `${w}? cosa vuol dire ${w}?` : `${w}? cos'è?`, 4.2, "ask"); C[C.length-1].setAsk = w; }
@@ -681,6 +681,10 @@ export async function reply(S, a, opt){
     if (h < 5 && sense.msgN <= 2) sx("late", "è tardi. non dormi?", 3);
   }
 
+  // appena svegliato: assonnato o scontroso
+  if (mood === "grumpy" && rnd() < .35) add(pick(["mmh","ok. ma piano","lasciami svegliare un attimo"]), 3.2, "senso");
+  if (mood === "drowsy" && rnd() < .2) add(pick(["mmh... sì","ahh. scusa, ho sonno"]), 2.6, "senso");
+
   // 10) eco intelligente come ultima risorsa
   const xs = salient(ctx, a);
   if (xs[0]) add(xs[0] + (a.s<0?"...":a.q?"?":"!"), .6, "echo");
@@ -709,18 +713,19 @@ export async function reply(S, a, opt){
     if (!["ans","def","senso"].includes(c.src) && !allowed(ctx, c.x.replace(/«[^»]*»/g," "))) sc -= 5; // parole che non conosce
     if (vecs) sc += 2.4 * dot(vecs[0], vecs[i+1]);               // pertinenza di senso
     sc += Math.max(-1, Math.min(1.2, (S.mem.reward[c.src] || 0) * .08)); // impara cosa ti piace
+    if (mood === "drowsy") sc -= c.x.length/30; if (mood === "grumpy") sc -= c.x.length/22; // assonnato: frasi corte
     c.sc = sc + rnd()*.9;
   });
   C.sort((x,y)=>y.sc-x.sc);
   if (globalThis.IMPRONTA_DEBUG) console.log(C.slice(0,5).map(c=>`${c.sc.toFixed(2)} [${c.src}] ${c.x}`).join("\n"));
   const best = C[0];
   if (!best || best.sc < -1) return glyph();
-  if (best.setAsk) set.ask = best.setAsk;
+  if (best.setAsk){ set.ask = best.setAsk; S.mem.curAt = S.user.msgs; }
   best.x = best.x.replace(/\b(ti|mi) piace (i|le|gli) /g, "$1 piacciono $2 ");
   if (best.sense) set.sense = best.sense;
   if (best.praise) set.praise = best.praise;
   if (best.insight) set.insight = best.insight;
-  return { x: best.x, emo: best.src==="praise" ? "happy" : emo, raw: ["ans","mem","def","senso","praise"].includes(best.src), set, src: best.src };
+  return { x: best.x, emo: best.src==="praise" ? "happy" : mood === "grumpy" && emo === "neutral" ? "hurt" : mood === "drowsy" && emo === "neutral" ? "sleepy" : emo, raw: ["ans","mem","def","senso","praise"].includes(best.src), set, src: best.src };
 }
 export function dot(a, b){ let s = 0; for (let i=0;i<a.length;i++) s += a[i]*b[i]; return s; }
 
