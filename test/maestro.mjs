@@ -1,0 +1,8 @@
+import {Maestro} from '../nucleo/maestro.js';
+const corpus=["oggi sono stanco ma felice","ho mangiato la pizza con mia mamma","domani ho la verifica di storia","mi piace il calcio e la musica","il mare è bello d estate","voglio andare al mare con i miei amici","la scuola è noiosa ma ci sono i miei amici","oggi ho giocato a calcio con mio fratello","mia mamma fa la pizza più buona","sono felice quando vado al mare","non mi piace la matematica","stasera guardo la partita di calcio","ho paura della verifica di domani","il mio cane si chiama rex","rex è il cane più bello","oggi piove e sono triste","ho litigato con mio fratello","mi sento solo quando piove","che bello un altro compito di matematica","sono contento perché domani vado al mare"];
+const m=new Maestro(); console.log(m.init({corpus,seed:3}));
+const t0=Date.now();
+for(let i=0;i<60;i++){ const s=m.impara(500); if(s.capisce!=null) console.log(`giro ${i+1} · neuroni ${s.H} · parametri ${s.params} · comprensione ${(s.capisce*100).toFixed(0)}% · parla ${s.parla} · perdita ${s.loss.toFixed(3)} · lotti ${s.batches}${s.grew?'  >>> CRESCE a '+s.grew.to:''}`); }
+console.log('tempo',((Date.now()-t0)/1000).toFixed(0),'s');
+for(const f of ["che bello anche oggi piove","sono distrutta","ti voglio bene amico mio","ho paura di domani","grazie tante eh","oggi ho preso dieci in storia","mi hanno lasciata","ho comprato le scarpe","fantastico si è rotto anche il telefono","sono furiosa con lei"]){ const a=m.senti(f); const top=Object.entries(a).filter(([k])=>!k.startsWith('_')).sort((x,y)=>y[1]-x[1]).slice(0,2).map(([k,v])=>k+' '+v.toFixed(2)).join(', '); console.log(f.padEnd(42),'→',top, a._incerto?'(incerto)':''); }
+console.log('parla:',m.parla({seeds:['mare','calcio']}).map(c=>c.x));
