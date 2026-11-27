@@ -9,7 +9,7 @@ Web app statica (GitHub Pages da `main`), tutta in italiano, nessuna API di IA a
 - Deve stupire chi lo usa e lasciare di stucco un programmatore: libreria propria, nessuna dipendenza.
 - Interfaccia: niente chat da scorrere; solo l'ultima frase sotto il volto a punti.
 - Dorme per allenarsi; si può svegliare (umore variabile). Vuole che si alleni anche ad app chiusa
-  → piano pronto in `docs/PIANO-SOGNI-GITHUB.md` (prossimo lavoro da fare).
+  → fatto: `tools/sogna.mjs` + `.github/workflows/sogni.yml` (vedi `docs/PIANO-SOGNI-GITHUB.md`, serve il secret).
 - Quando una modifica è pronta l'utente di solito chiede di pubblicarla: PR verso `main` e merge.
 
 ## Mappa dei file
@@ -26,6 +26,7 @@ Web app statica (GitHub Pages da `main`), tutta in italiano, nessuna API di IA a
 | `nucleo/carattere.js` | modello dell'utente: tratti, collegamenti argomenti/orari/umore |
 | `nucleo/worker.js` | la rete gira in un Web Worker (fallback nel thread principale) |
 | `nucleo/index.js` | API `Nucleo`: avvia, osserva, senti, parla, sogna, pilota automatico, salvataggio su IndexedDB |
+| `tools/sogna.mjs` | sogni sul server: ogni ora (GitHub Actions `sogni.yml`) allena le reti di chi dorme, `sognaTutti(adapter)` |
 | `test/` | test (vedi sotto) |
 
 ## Concetti chiave
@@ -33,10 +34,11 @@ Web app statica (GitHub Pages da `main`), tutta in italiano, nessuna API di IA a
 - **Vincolo del vocabolario**: le frasi di tipo `tpl/refl/rete` devono usare parole insegnate (+ grammatica innata per fase, `innate()`); le fonti `ans/def/mem/senso/praise/chiede/sonno` sono esenti.
 - **Stato** `S` in localStorage `impronta_state`, sincronizzato su Firebase RTDB `impronta/<ID>` (ID 16 caratteri = "codice di legame"). La rete NON è nello stato: sta in IndexedDB `impronta` / chiave `impronta_nucleo`.
 - **Sonno** (app.js, sezione SONNO): energia per fase, pisolino `NAP[p]` minuti, `S.energy = {sleepStart, sleepUntil, need, dreamMs, dreamt, wakes, rt}`. `dream()` allena finché `dreamMs >= need`; `sleepResume()` recupera i sogni al ritorno; `wakeForced()` = risveglio con umore.
+- **Sogni ad app chiusa**: `syncNetUp()` (si addormenta / va in background mentre dorme) carica la rete in `impronta_nets/<ID>` = `{meta:{at,steps,H,by}, net:"<json>"}`; `syncNetDown()` (inizio di `welcome` e al ritorno) importa quella del server con `Nucleo.importa`. Il server aggiorna solo `energy/dreamMs`, `energy/srv`, `energy/dreamt`, `diary`, `diaryUnread`, `updatedAt`.
 - **Ironia**: `B.ironyEstimate` (rete + regole + `S.mem.ironyLex`); nel dubbio chiede (`S.mem.confirm`), statistiche in `S.mem.ironyStats`.
 
 ## Come testare
-- Logica pura (Node): `node test/insegnamenti.mjs`, `node test/gradienti.mjs` (tutte le righe devono dire `ok`), `node test/maestro.mjs` (crescita + emozioni su frasi nuove, ~30 s).
+- Logica pura (Node): `node test/insegnamenti.mjs`, `node test/gradienti.mjs` e `node test/sogni-server.mjs` (tutte le righe devono dire `ok`), `node test/maestro.mjs` (crescita + emozioni su frasi nuove, ~30 s).
 - Browser: `node test/browser.cjs` usa Playwright (già installato nell'ambiente cloud) e serve i file con `page.route` su `http://impronta.local/` — **non avviare server locali** (in questo ambiente il comando viene bloccato). `window.__impronta.idle` dice quando l'app ha finito di rispondere.
 - Firebase e gstatic sono bloccati dal proxy nell'ambiente cloud: la sincronizzazione non è testabile lì.
 

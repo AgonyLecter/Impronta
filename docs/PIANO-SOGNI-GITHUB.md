@@ -1,7 +1,13 @@
 # Piano: allenare la rete mentre l'app è chiusa (GitHub Actions, gratis)
 
-**Stato**: approvato dall'utente, NON ancora implementato. Il sonno nuovo (sogni ad app aperta,
-recupero al ritorno, risveglio con umore) è già online.
+**Stato**: IMPLEMENTATO (codice, workflow e test). Per attivarlo servono i 4 passi dell'utente in fondo
+(chiave di servizio, secret, regole, prima prova). Differenze dal piano iniziale:
+- `impronta_nets/<ID>/net` è una **stringa JSON** (non un oggetto): Firebase toglie array vuoti/null e
+  rinumera gli array, così la rete torna identica.
+- il server salta chi ha `updatedAt` negli ultimi 3 minuti (app aperta: allena il telefono).
+- il telefono importa solo reti con `meta.by === "srv"`; `S.netUp` = passi già caricati (non ricarica se uguali).
+- se la rete ripete a memoria le frasi, il sogno del diario si cerca con temperatura più alta (`parla(..., temp)`).
+- Node 22 nel workflow (gli import ESM di `nucleo/*.js` senza package.json lo richiedono).
 
 ## Perché
 Un telefono sospende tutto il JavaScript quando l'app è chiusa o lo schermo è spento: la rete non
