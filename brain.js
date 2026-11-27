@@ -36,8 +36,8 @@ export function innate(p){ const s = new Set(); if (p>=2) INN2.forEach(w=>s.add(
 
 /* ---------- lessici ---------- */
 const SENT = { // radice → valore
-  bene:1.2, felic:2, content:1.5, bell:1.3, fantastic:2, ador:2, grazi:1, top:1.3, fig:0, figo:1.3, figat:1.5, evviv:2, super:1.2, meglio:1, divert:1.5, sorrid:1.3, gioi:2, amor:1.5, perfett:1.5, stupend:2, wow:1.2, seren:1.3, tranquill:1, carin:1, dolc:1, entusiasm:2, rilassat:1.2, fortun:1.3, vint:1.2, promoss:2,
-  male:-1.3, trist:-2, stanc:-1.2, schif:-1.8, paur:-1.6, piang:-2, arrabbiat:-1.8, noi:-1.2, annoi:-1.2, ansi:-1.6, stress:-1.5, brutt:-1.3, peggi:-1.3, uff:-1, depress:-2.2, nervos:-1.5, odi:-1.8, dolor:-1.6, malat:-1.6, incub:-1.5, sfig:-1.3, pesant:-1, solitud:-1.8, preoccup:-1.4, deluss:-1.6, bocciat:-2, pers:-0.6, litig:-1.5, mort:-1.5, giu:-0.8, agitat:-1.4, panic:-2, insonn:-1.2, ferit:-1.4
+  bene:1.2, felic:2, content:1.5, bell:1.3, fantastic:2, ador:2, grazi:1, top:1.3, fig:0, figo:1.3, figat:1.5, evviv:2, super:1.2, meglio:1, divert:1.5, sorrid:1.3, gioi:2, amor:1.5, perfett:1.5, stupend:2, wow:1.2, seren:1.3, tranquill:1, carin:1, dolc:1, entusiasm:2, rilassat:1.2, fortun:1.3, vint:1.2, promoss:2, giust:1, corrett:1, esatt:1, brillant:1.5, ottim:1.5, eccellent:2, geni:1,
+  male:-1.3, trist:-2, stanc:-1.2, schif:-1.8, paur:-1.6, piang:-2, arrabbiat:-1.8, noi:-1.2, annoi:-1.2, ansi:-1.6, stress:-1.5, brutt:-1.3, peggi:-1.3, uff:-1, depress:-2.2, nervos:-1.5, odi:-1.8, dolor:-1.6, malat:-1.6, incub:-1.5, sfig:-1.3, pesant:-1, solitud:-1.8, preoccup:-1.4, deluss:-1.6, bocciat:-2, pers:-0.6, sbagliat:-1, litig:-1.5, mort:-1.5, agitat:-1.4, panic:-2, insonn:-1.2, ferit:-1.4
 };
 const INSULT = ["stupid","scem","idiot","inutil","cretin","muori","ti odio","fai schifo","stronz","vaffanc","coglion","sfigat","fallit","zitto","taci","deficient","imbecill","brutto mostro"];
 const KIND = ["ti voglio bene","tvb","tvtb","bravo","brava","sei dolce","carino","carina","ti adoro","tesoro","amico mio","sei forte","sei bell","mi piaci","sei simpatic","sei intelligent","sei speciale","ti amo"];
@@ -93,6 +93,7 @@ export function analyze(msg){
   toks.forEach((t,i) => {
     const st = deacc(t); let v = 0;
     for (const k in SENT) if (st.startsWith(k) && SENT[k]) { v = SENT[k]; break; }
+    if (t === "giù") v = -0.8;
     if (!v) return;
     const before = toks.slice(Math.max(0,i-3), i);
     if (before.includes("non") || before.includes("mai") || before.includes("niente")) v = -v*.8;
@@ -129,6 +130,24 @@ export function analyze(msg){
   // definizione: "X è Y" / "X vuol dire Y"
   if (!a.q && (m = low.match(/^(?:il |lo |la |l |un |una |i |gli |le )?([a-zà-ù]{3,}) (?:(?:è|sono) ((?:un|una|uno|quando|tipo|come|il|la|lo|l) .{2,60})|(?:vuol dire|significa) (.{2,60}))$/)) && !STOP.has(m[1]) && !/^(cos|cosa|che|chi|come|dove|quando|perch)/.test(m[1])) a.def = { w:m[1], x:(m[2]||m[3]) };
 
+  // insegnamenti su di lui ("tu ti chiami...", "tu sei...") e su di te ("ho 16 anni", "il mio cane si chiama rex")
+  if (!a.q){
+    if ((m = low.match(/^(?:tu )?ti chiami ([a-zà-ù]{2,14})$|^il tuo nome (?:è|e) ([a-zà-ù]{2,14})$/))) a.teachName = m[1] || m[2];
+    else if ((m = low.match(/^tu sei (?:un |una |uno |molto |tanto |proprio )?([a-zà-ù ]{3,30})$/))) a.teachSelf = m[1];
+    else if ((m = low.match(/^a te piace (?:il |lo |la |i |gli |le |l )?([a-zà-ù]{3,}(?: [a-zà-ù]{3,})?)$/))) a.teachLike = m[1];
+    if ((m = low.match(/(?:^| )(?:io )?ho (\d{1,3}|[a-zà-ù]+) anni\b/))) a.fact = { k:"anni", v:m[1] };
+    else if ((m = low.match(/(?:^| )(?:io )?(?:abito|vivo) (?:a|in|ad) ([a-zà-ù ]{2,30})$/))) a.fact = { k:"abito", v:m[1] };
+    else if ((m = low.match(/(?:^| )(?:il |la |lo |l |i |le )?(mio|mia|miei|mie) ([a-zà-ù]{3,})(?: preferit[oaie])? (si chiama|si chiamano|è|e|sono) (.{2,30})$/))) a.fact = { k:m[2], v:m[4], poss:m[1], verb:m[3]==="e"?"è":m[3] };
+    else if ((m = low.match(/^(?:io )?(studio|faccio il|faccio la|lavoro come|lavoro in|lavoro a) ([a-zà-ù ]{3,30})$/))) a.fact = { k: m[1]==="studio" ? "studio" : "lavoro", v:m[2] };
+  }
+  if (/quanti anni ho/.test(low)) a.askFact = "anni";
+  else if (/dove (abito|vivo)/.test(low)) a.askFact = "abito";
+  else if (/(che lavoro faccio|cosa faccio nella vita|che faccio nella vita)/.test(low)) a.askFact = "lavoro";
+  else if (/(cosa studio|che cosa studio|che studio)/.test(low)) a.askFact = "studio";
+  else if ((m = low.match(/(?:qual è|qual e|quale è|quale e|come si chiama|come si chiamano|chi è|chi e|cos è|cosa è|com è|com e) (?:il |la |lo |l |i |le )?(mio|mia|miei|mie) ([a-zà-ù]{3,})/))) { a.askFact = m[2]; a.askPoss = m[1]; }
+  a.achieve = /\b(ho preso|ho vinto|ce l ho fatta|ce la ho fatta|ho finito|sono stat[oa] promoss|ho superato|ho passato|mi hanno pres|sono riuscit|ho segnato|ho fatto goal|ho imparato|ho risolto|ho trovato)\b/.test(low) && a.s >= 0;
+  a.selfQ = /^(come sei|che tipo sei|tu come sei|come sei fatto|chi sei tu|tu chi sei)\b/.test(low);
+
   // domande specifiche
   const Q = [
     ["ask_name", /(come ti chiami|qual è il tuo nome|chi sei|tu chi sei|il tuo nome)/],
@@ -148,18 +167,48 @@ export function analyze(msg){
     ["ask_ai", /(sei un'?ia|sei un robot|sei vero|sei vivo|sei umano|sei intelligente|sei una persona|cosa sei)/],
     ["ask_love", /(mi vuoi bene|mi ami|ti piaccio|sono importante)/]
   ];
-  for (const [k, re] of Q){ const mm = low.match(re); if (mm){ a.ask = k; a.askArg = mm[2] || null; break; } }
+  if (a.askFact) a.ask = "ask_fact";
+  else if (a.selfQ) a.ask = "ask_self";
+  else for (const [k, re] of Q){ const mm = low.match(re); if (mm){ a.ask = k; a.askArg = mm[2] || null; break; } }
   if (a.ask==="ask_remember" && !a.q) a.ask = null;
   if (a.ask==="ask_me" && /chi sono/.test(low) && !/io|sai|chi sono\??$/.test(low)) a.ask = null;
 
-  a.intent = a.insult ? "insult" : a.name ? "name" : a.ask ? a.ask : a.like ? "like" : a.dislike ? "dislike" : a.bye ? "bye" : a.greet ? "greet" : a.thanks ? "thanks" : a.sorry ? "sorry" : a.kind ? "kind" : a.event ? "event" : a.feel ? "feel" : a.humor ? "humor" : a.s < 0 ? "neg" : a.s > 0 ? "pos" : a.yes ? "yes" : a.no ? "no" : a.q ? "question" : "default";
+  a.teach = !!(a.teachName || a.teachSelf || a.teachLike || a.fact);
+  a.intent = a.insult ? "insult" : a.teach ? "teach" : a.name ? "name" : a.ask ? a.ask : a.like ? "like" : a.dislike ? "dislike" : a.bye ? "bye" : a.greet ? "greet" : a.thanks ? "thanks" : a.sorry ? "sorry" : a.kind ? "kind" : a.event ? "event" : a.feel ? "feel" : a.humor ? "humor" : a.s < 0 ? "neg" : a.s > 0 ? "pos" : a.yes ? "yes" : a.no ? "no" : a.q ? "question" : "default";
   return a;
 }
 function SENTword(w){ const st = deacc(w); return Object.keys(SENT).some(k => SENT[k] && st.startsWith(k)) || /at[oa]$|it[oa]$|os[oa]$|ent[ei]$/.test(w); }
 
 /* ---------- apprendimento ---------- */
+/* valore affettivo di una frase per lui: dal lessico, dal significato che gli hai spiegato, da come la usi */
+export function phraseVal(S, key){
+  const a = analyze(key); if (a.s) return a.s;
+  let v = 0; for (const w of tokenize(key)){ const W = S.words[w]; if (!W) continue; if (W.val) v += W.val; else if (W.c >= 2) v += W.s / W.c; }
+  return v;
+}
 export function learn(S, msg, a, t){
-  const newW = [];
+  const newW = [], M0 = S.mem;
+  // risposta a una domanda che aveva fatto lui ("come si chiama il tuo cane?" → "rex")
+  if (M0.pendingQ && !a.q && !a.teach && t - M0.pendingQ.t < 10*60e3 && a.toks.length <= 8){
+    let v = a.low.replace(/^(?:si chiama|si chiamano|è|e|sono|ho|abito a|abito in|vivo a|vivo in|studio|faccio)\s+/, "").replace(/ anni$/, "");
+    if (v){ S.facts[M0.pendingQ.k] = { v, poss:M0.pendingQ.poss, verb:M0.pendingQ.verb }; a.answered = { k:M0.pendingQ.k, v }; }
+    M0.pendingQ = null;
+  }
+  if (a.teachName){ const nm = a.teachName.charAt(0).toUpperCase()+a.teachName.slice(1); if (nm !== S.name){ (S.self.names ||= []).push(S.name); S.name = nm; } }
+  if (a.teachSelf && !S.self.is.includes(a.teachSelf)){ S.self.is.push(a.teachSelf); if (S.self.is.length > 12) S.self.is.shift(); }
+  if (a.teachLike && !S.self.likes.includes(a.teachLike)){ S.self.likes.push(a.teachLike); if (S.self.likes.length > 12) S.self.likes.shift(); }
+  if (a.fact) S.facts[a.fact.k] = { v:a.fact.v, poss:a.fact.poss, verb:a.fact.verb };
+  // rinforzo: come reagisci subito dopo una sua frase
+  const prev = S.log[S.log.length-2];
+  if (prev && prev.w === "c" && !a.q && a.rtoks.length && a.rtoks.length <= 4 && !a.teach){
+    const key = a.rtoks.join(" "), R = M0.react[key] || { c:0 }; R.c++; R.t = t; M0.react[key] = R;
+    const keys = Object.keys(M0.react); if (keys.length > 120){ keys.sort((x,y)=>M0.react[x].t-M0.react[y].t); delete M0.react[keys[0]]; }
+    const v = phraseVal(S, key) + (a.kind ? 1 : 0) + (a.thanks ? .5 : 0);
+    const neg = a.insult || /^(no|sbagliato|non hai capito|ma che dici|non è vero|non e vero|non c entra|smettila)/.test(a.low);
+    const src = prev.src || "?";
+    if (v > 0 && !neg){ M0.reward[src] = (M0.reward[src]||0) + 1; a.praise = key; }
+    else if (neg){ M0.reward[src] = (M0.reward[src]||0) - 1; a.scold = true; }
+  }
   for (const w of a.rtoks){
     if (!S.words[w]){ if (Object.keys(S.words).length > 2500) continue; S.words[w] = {c:0, f:t, s:0}; if (!STOP.has(w) && w.length>2) newW.push(w); }
     S.words[w].c++; S.words[w].l = t; S.words[w].s += a.s;
@@ -338,7 +387,7 @@ function markov(ctx, seed){
 /* ---------- risposta ---------- */
 /* Restituisce {x, glyph, emo, raw, cap, set} */
 export async function reply(S, a, opt){
-  const { phase:p, now, rnd, mind, net, sense } = opt;
+  const { phase:p, now, rnd, mind, net, sense, feel, insight } = opt;
   const ctx = makeCtx(S, p, now, rnd), pick = ctx.pick;
   // la mente semantica capisce il senso anche quando le regole non bastano
   if (mind && mind.ready && (a.intent==="default" || a.intent==="question") && p>=1){
@@ -346,7 +395,14 @@ export async function reply(S, a, opt){
       if (g.intent.startsWith("ask_")) a.ask = a.ask || g.intent;
       a.intent = g.intent; if (g.intent==="neg") a.s = Math.min(a.s, -1); if (g.intent==="pos") a.s = Math.max(a.s, 1); if (g.intent==="insult") a.insult = true; } } catch(e){}
   }
-  const emo = a.insult?"hurt" : a.s<0?"sad" : (a.humor||a.kind||a.s>0||a.greet)?"happy" : a.q?"curious" : "neutral";
+  if (feel){
+    a.netFeel = feel;
+    if (feel.ironia > .6 && !a.insult){ a.irony = true; if (a.s > 0) a.s = -1; if (["pos","default","humor"].includes(a.intent)) a.intent = "irony"; }
+    else if (feel.tristezza > .7 && a.s >= 0 && !a.ask){ a.s = -1; if (a.intent==="default"||a.intent==="pos") a.intent = "neg"; }
+    else if (feel.rabbia > .75 && a.s >= 0 && !a.ask){ a.s = -1; if (a.intent==="default") a.intent = "neg"; }
+    else if ((feel.gioia > .75 || feel.affetto > .75) && a.s <= 0 && a.intent==="default"){ a.s = 1; a.intent = "pos"; }
+  }
+  const emo = a.irony ? "smirk" : a.insult?"hurt" : a.s<0?"sad" : (a.humor||a.kind||a.s>0||a.greet)?"happy" : a.q?"curious" : "neutral";
   const glyph = () => ({ x: pick(G[a.intent] || G[a.s<0?"neg":a.s>0?"pos":"default"] || G.default), glyph:true, emo });
   const C = []; // candidati {x, w, src}
   const add = (x, w, src) => { if (x) C.push({x, w, src}); };
@@ -387,14 +443,14 @@ export async function reply(S, a, opt){
   if (S.mem.ask && now - S.mem.ask.t < 10*60e3 && !a.q && defLike){
     const w = S.mem.ask.w; let x = a.low.replace(new RegExp("^(?:"+w+" )?(?:è|e|sono|vuol dire|significa)\\s+"), "").replace(/^(un|una|uno|il|la|lo|l) /, m=>m);
     x = x.split(" ").slice(0,8).join(" ");
-    if (x && x !== w){ set.def = { w, x }; return { x: p>=3 ? `${w} è ${x}. capito` : `${w}... ${x}`, emo:"happy", raw:true, set, cap:"ha imparato cosa vuol dire" }; }
+    if (x && x !== w){ set.def = { w, x }; const vd = /^(che|quando|se|fare|essere|avere)\b/.test(x); return { x: p>=3 ? `${w} ${vd ? "vuol dire" : "è"} ${x}. capito` : `${w}... ${x}`, emo:"happy", raw:true, set, src:"def", cap:"ha imparato cosa vuol dire" }; }
   }
   if (a.def){ set.def = a.def; add(p>=3 ? `${a.def.w} è ${a.def.x}. capito` : `${a.def.w}. ${a.def.x}`, 3, "def"); }
 
   // 2) risposte dirette alle domande
   const ans = (x, w=5) => add(x, w, "ans");
   switch (a.ask){
-    case "ask_name": ans(p>=3 ? `mi chiamo ${Cn}. il nome me l'hai dato tu` : `sono ${Cn}`); ans(`${Cn}`, 2); break;
+    case "ask_name": ans(p>=3 ? (S.self.names && S.self.names.length ? `mi chiamo ${Cn}. me l'hai insegnato tu` : `mi chiamo ${Cn}. il nome me l'hai dato tu`) : `sono ${Cn}`); ans(`${Cn}`, 2); break;
     case "ask_age": ans(p>=3 ? `ho ${days} ${days===1?"giorno":"giorni"}. sono nato con te` : `${days} ${days===1?"giorno":"giorni"}`); break;
     case "ask_know": { const fav = Object.keys(S.words).filter(w=>!STOP.has(w)&&w.length>2).sort((x,y)=>S.words[y].c-S.words[x].c)[0];
       ans(p>=3 ? `conosco ${k} parole. la mia preferita è ${fav}` : `${k} parole`); if (fav) ans(`${fav}. e ${k} parole`, 2); break; }
@@ -441,6 +497,35 @@ export async function reply(S, a, opt){
     case "ask_love": ans(S.traits.calore > 0 ? (p>=3 ? "sì. tanto" : "sì") : (p>=3 ? "forse. sto imparando" : "forse"), 5); break;
   }
 
+  // 2b) cose che gli hai insegnato
+  const POSS = { mio:"tuo", mia:"tua", miei:"tuoi", mie:"tue" };
+  const KIN = /^(mamma|papà|papa|padre|madre|fratello|sorella|nonno|nonna|zio|zia|cugino|cugina|marito|moglie|figlio|figlia)$/;
+  const tuo = (poss, k) => { const t = POSS[poss] || "tuo"; return KIN.test(k) ? `${t} ${k}` : `${{tuo:"il",tua:"la",tuoi:"i",tue:"le"}[t]} ${t} ${k}`; };
+  const factLine = (k, F) => k==="anni" ? `hai ${F.v} anni` : k==="abito" ? `abiti a ${F.v}` : k==="studio" ? `studi ${F.v}` : k==="lavoro" ? `lavori ${/^(in|a|come) /.test(F.v)?"":"come "}${F.v}` : `${tuo(F.poss, k)} ${F.verb||"è"} ${F.v}`;
+  if (a.teachName){ add(p>=3 ? `mi chiamo ${a.teachName}. mi piace` : `${a.teachName}!`, 6, "ans"); }
+  if (a.teachSelf){ add(p>=3 ? `sono ${a.teachSelf}? ok. lo ricordo` : `${a.teachSelf}...`, 5, "ans"); }
+  if (a.teachLike){ add(p>=3 ? `mi piace ${withArt(a.teachLike)}. se lo dici tu` : `${a.teachLike}!`, 5, "ans"); }
+  if (a.fact){ add(p>=3 ? `${factLine(a.fact.k, a.fact)}. me lo ricordo` : `${a.fact.v}!`, 5.5, "ans"); }
+  if (a.answered){ add(p>=3 ? `${factLine(a.answered.k, S.facts[a.answered.k])}. ora lo so` : `${a.answered.v}!`, 6, "ans"); }
+  if (a.ask === "ask_fact"){
+    const F = S.facts[a.askFact];
+    if (F) ans(p>=3 ? `${factLine(a.askFact, F)}. me l'hai detto tu` : F.v, 7);
+    else { ans(p>=3 ? "non lo so. me lo dici?" : "non so. tu?", 5); set.pendingQ = { k:a.askFact, poss:a.askPoss, verb: /si chiam/.test(a.low) ? (a.askPoss==="miei"||a.askPoss==="mie" ? "si chiamano" : "si chiama") : "è" }; }
+  }
+  if (a.ask === "ask_self"){
+    if (S.self.is.length) ans(p>=3 ? `sono ${pick(S.self.is)}. me l'hai detto tu` : pick(S.self.is), 6);
+    else ans(p>=3 ? "non lo so ancora. dimmelo tu" : "non so", 4);
+  }
+  // rinforzo: usa le parole che dici tu quando qualcuno fa una cosa giusta
+  if (a.achieve){
+    const praise = Object.entries(S.mem.react).filter(([k,R]) => R.c >= 2 && phraseVal(S, k) > 0 && k.split(" ").length <= 3).sort((x,y)=>y[1].c-x[1].c);
+    if (praise.length){ const [k, R] = praise[0], w = 6 + Math.min(2, R.c*.3);
+      add(`${k}!`, w, "praise"); C[C.length-1].praise = k;
+      const core = reflect(a.toks.filter(t => !["oggi","ieri","finalmente","sai","che"].includes(t))).join(" ");
+      if (p>=3 && core.length < 50){ add(`${k}! ${core}`, w + .6, "praise"); C[C.length-1].praise = k; } }
+  }
+  if (a.praise && p>=2){ add(S.words["grazie"] ? "grazie!" : `${a.praise}?`, 4.6, "ans"); if (p>=3 && S.words["grazie"]) add(`grazie. ${a.praise} anche tu`, 4.2, "ans"); }
+
   // 3) risposte a fatti nuovi
   if (a.name){ add(p>=3 ? `${a.name}. bel nome` : `${a.name}!`, 4, "fact"); if (Cn && p>=3) add(`ciao ${a.name}. io sono ${Cn}`, 4, "fact"); }
   if (a.event){ add(p>=3 ? `${a.event.x}? come ti senti?` : `${a.event.x}!`, 4, "fact"); if (p>=3) add(`${a.event.tw} ${a.event.x}. me lo ricordo`, 3.5, "fact"); }
@@ -472,6 +557,11 @@ export async function reply(S, a, opt){
 
   // 5) curiosità: una parola nuova → chiede cosa vuol dire (lo insegna lui a se stesso)
   const unknownWords = a.content.filter(w => S.words[w] && S.words[w].c <= 1 && !S.defs[w] && w.length >= 5 && !SENTword(w) && !COMMON.has(w) && !PEOPLE.includes(w) && !/(are|ere|ire|ato|ata|uto|ito|ando|endo|mente|issim)$/.test(w) && !innate(4).has(w));
+  const prevC = S.log[S.log.length-2];
+  if (prevC && prevC.w === "c" && a.rtoks.length <= 3 && !a.q && p>=2){   // "bravissimo" detto a lui per la prima volta
+    const fresh = a.content.filter(w => S.words[w] && S.words[w].c <= 1 && !S.defs[w] && w.length >= 4 && !COMMON.has(w) && !innate(4).has(w));
+    if (fresh.length){ const w = fresh[0]; add(p>=3 ? `${w}? cosa vuol dire ${w}?` : `${w}? cos'è?`, 4.2, "ask"); C[C.length-1].setAsk = w; }
+  }
   if (unknownWords.length && p>=2 && !a.q && !a.ask && ["default","event","pos","neg","feel","like","dislike"].includes(a.intent) && !/^(è|e|sono) /.test(a.low)){ const w = pick(unknownWords); add(p>=3 ? `${w}? cos'è ${w}?` : `${w}? cos'è?`, 2.4 + S.traits.curiosita, "ask"); C[C.length-1].setAsk = w; }
 
   // 6) memoria: collega a cose dette prima
@@ -479,7 +569,7 @@ export async function reply(S, a, opt){
     const st = a.stems.filter(s=>s.length>3);
     const hit = S.quotes.slice(0,-1).reverse().find(q => now - q.t > 3*HOUR && tokenize(q.x).some(w => st.includes(stem(w)) && !STOP.has(w)));
     if (hit) add(`l'altra volta hai detto «${hit.x}»`, 2.6, "mem");
-    const d = a.content.find(w => S.defs[w]); if (d) add(`${d}. cioè ${S.defs[d]}`, 2.4, "mem");
+    const d = a.content.find(w => S.defs[w]); if (d && !a.praise) add(`${d}. cioè ${S.defs[d]}`, 2.4, "mem");
     if (a.like && S.likes.length > 1){ const o = pick(S.likes.filter(l=>l!==a.like)); if (o) add(`ti piace ${withArt(a.like)}. e anche ${withArt(o)}`, 3, "mem"); }
   }
 
@@ -495,12 +585,22 @@ export async function reply(S, a, opt){
     for (const c of net.cands){
       const ws = c.x.split(" ");
       if (c.x.length > OUTMAX[p] || ws.length > 9 || STOP.has(ws[ws.length-1]) && !["bene","male","qui"].includes(ws[ws.length-1])) continue;
-      if (!story && !c.rel) continue;                               // deve parlare di quello di cui parli
+      if (!story && (!c.rel || ws.length < 4)) continue;             // deve parlare di quello di cui parli
       if (a.ask && !story) { add(c.x, .6, "rete"); continue; }        // a una domanda si risponde, non si divaga
-      add(c.x, (story ? 4.5 : p>=4 ? 2.2 : 1.1) + c.rel*1.2 + Math.max(-1, c.lp+2)*.4, "rete");
+      const mine = new Set(a.toks), ov = ws.filter(w => mine.has(w)).length / ws.length;
+      if (ov > .6 && !story) continue;                              // non ripetere la tua frase
+      add(c.x, (story ? 4.5 : p>=4 ? 1.8 : .8) + c.rel*.8 + Math.max(-1, c.lp+2)*.3, "rete"); C[C.length-1].noLex = true;
     }
   } else if (p>=4 && rnd() < .5){ const seed = salient(ctx, a)[0]; const mk = markov(ctx, seed); if (mk) add(mk, 1.6 + S.traits.ironia*.5, "voce"); }
   if (net && net.pairs && p>=4) for (const [x, y] of net.pairs) add(`per te ${x} e ${y} sono vicini. l'ho capito da solo`, 2.2, "rete");
+
+  // ironia capita: non la prende alla lettera
+  if (a.irony && p>=2){
+    add("lo dici sul serio?", 4.2, "senso");
+    if (p>=3){ add("ahah. ho capito che non lo pensi davvero", 4, "senso"); const xs2 = salient(ctx, a); if (xs2[0]) add(`${xs2[0]}... bello eh. come no`, 3.6, "senso"); }
+  }
+  // capisce qualcosa del tuo carattere
+  if (insight && p>=3) add(p>=4 ? `${insight.x}. l'ho notato` : `${insight.x}?`, 3.4, "senso"), C[C.length-1].insight = insight.k;
 
   // 9) sensi: come hai scritto, che ora è
   if (sense && p>=3){
@@ -534,19 +634,23 @@ export async function reply(S, a, opt){
     if (c.x.length > maxLen) sc -= 4;
     if (ctx.recent.slice(-4).includes(n)) sc -= 6; else if (ctx.recent.includes(n)) sc -= 1.5;                        // non ripetersi
     const ov = tokenize(c.x).filter(w=>!STOP.has(w)).map(stem); const shared = ov.filter(s=>msgSt.has(s)).length;
-    sc += Math.min(2, shared*.6);                               // pertinenza lessicale
+    sc += Math.min(c.noLex ? .8 : 2, shared*.6);                // pertinenza lessicale
     if (lastOut && ov.length && ov.filter(s=>tokenize(lastOut).map(stem).includes(s)).length/ov.length > .6) sc -= 1.5;
     if (n === norm(a.raw)) sc -= 3;                             // pappagallo puro
     if (!["ans","def","senso"].includes(c.src) && !allowed(ctx, c.x.replace(/«[^»]*»/g," "))) sc -= 5; // parole che non conosce
     if (vecs) sc += 2.4 * dot(vecs[0], vecs[i+1]);               // pertinenza di senso
+    sc += Math.max(-1, Math.min(1.2, (S.mem.reward[c.src] || 0) * .08)); // impara cosa ti piace
     c.sc = sc + rnd()*.9;
   });
   C.sort((x,y)=>y.sc-x.sc);
+  if (globalThis.IMPRONTA_DEBUG) console.log(C.slice(0,5).map(c=>`${c.sc.toFixed(2)} [${c.src}] ${c.x}`).join("\n"));
   const best = C[0];
   if (!best || best.sc < -1) return glyph();
   if (best.setAsk) set.ask = best.setAsk;
   if (best.sense) set.sense = best.sense;
-  return { x: best.x, emo, raw: ["ans","mem","def","senso"].includes(best.src), set, src: best.src };
+  if (best.praise) set.praise = best.praise;
+  if (best.insight) set.insight = best.insight;
+  return { x: best.x, emo: best.src==="praise" ? "happy" : emo, raw: ["ans","mem","def","senso","praise"].includes(best.src), set, src: best.src };
 }
 export function dot(a, b){ let s = 0; for (let i=0;i<a.length;i++) s += a[i]*b[i]; return s; }
 
