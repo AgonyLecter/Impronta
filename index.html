@@ -4,6 +4,10 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#000000">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="impronta">
 <title>impronta.</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -697,9 +701,30 @@ async function hatch(){
   setHint("insegnagli qualcosa. la prima parola che scrivi sarà la sua prima parola.");
   S.litSeen = litCount(); render(); inp.focus();
 }
-$("#stage").addEventListener("pointerdown", e=>{ if (S.born) { if(!isAsleep()){ setEmo("happy",900); tone(880,.05,"triangle",.03); buzz(15); } return; } holding=true; holdStart=performance.now(); audio(); setHint("ancora…"); holdTick(); });
+$("#stage").addEventListener("pointerdown", e=>{ try{ $("#stage").setPointerCapture(e.pointerId); }catch(_){} if (S.born) { if(!isAsleep()){ setEmo("happy",900); tone(880,.05,"triangle",.03); buzz(15); } return; } holding=true; holdStart=performance.now(); audio(); setHint("ancora…"); holdTick(); });
 const release = ()=>{ if (!holding) return; holding=false; cancelAnimationFrame(holdRaf); const decay=setInterval(()=>{ F.hold=Math.max(0,F.hold-.04); if(F.hold<=0) clearInterval(decay); },30); setHint("tieni premuto. di più."); };
 ["pointerup","pointerleave","pointercancel"].forEach(ev=>$("#stage").addEventListener(ev, release));
+
+/* ================= SCHERMO INTERO ================= */
+// Al primo tocco (e a ogni tocco se si è usciti) entra a schermo intero.
+// I browser lo concedono solo dentro un gesto: pointerdown col mouse, pointerup col dito.
+const fsEl = document.documentElement;
+const fsReq = fsEl.requestFullscreen || fsEl.webkitRequestFullscreen;
+const fsOn = () => document.fullscreenElement || document.webkitFullscreenElement;
+let fsPending = false;
+function goFullscreen(e){
+  if (!fsReq || fsOn() || fsPending) return;
+  if (e.type==="pointerdown" && e.pointerType!=="mouse") return;
+  if (e.type==="pointerup" && e.pointerType==="mouse") return;
+  fsPending = true;
+  try{
+    const r = fsReq.call(fsEl, {navigationUI:"hide"});
+    if (r && r.then) r.then(()=>{ try{ screen.orientation.lock("portrait").catch(()=>{}); }catch(_){} }).catch(()=>{}).finally(()=>fsPending=false);
+    else fsPending = false;
+  }catch(_){ fsPending = false; }
+}
+["pointerdown","pointerup"].forEach(ev=>document.addEventListener(ev, goFullscreen, true));
+document.addEventListener("keydown", e=>{ if (e.key!=="Escape") goFullscreen(e); }, true);
 
 /* ================= INPUT ================= */
 let ghosts = 0, lastClear = 0, prevLen = 0, ghostFired = false, lastAct = Date.now(), idleFired = 0;
