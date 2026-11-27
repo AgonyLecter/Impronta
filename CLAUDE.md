@@ -10,6 +10,7 @@ Web app statica (GitHub Pages da `main`), tutta in italiano, nessuna API di IA a
 - Interfaccia: niente chat da scorrere; solo l'ultima frase sotto il volto a punti.
 - Dorme per allenarsi; si può svegliare (umore variabile). Vuole che si alleni anche ad app chiusa
   → fatto: `tools/sogna.mjs` + `.github/workflows/sogni.yml` (vedi `docs/PIANO-SOGNI-GITHUB.md`, serve il secret).
+- NUOVA DIREZIONE: esperimento di rete neurale vera che studia da sola (Wikipedia, Wikizionario, libri liberi, link) e racconta cosa scopre; niente quiz, niente "mistero" → `docs/PIANO-STUDIO.md` (prossimo lavoro).
 - Quando una modifica è pronta l'utente di solito chiede di pubblicarla: PR verso `main` e merge.
 
 ## Mappa dei file
