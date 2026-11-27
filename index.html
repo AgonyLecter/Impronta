@@ -69,6 +69,9 @@ button:focus-visible{outline:1px solid var(--ink);outline-offset:3px;border-radi
 #oracle.off{opacity:0;transform:translateY(6px)}
 #oracle .glyphs{opacity:.55}
 #oracle small{color:var(--dim);font-size:10px;letter-spacing:.08em}
+#dreams{position:absolute;inset:0;pointer-events:none;overflow:hidden}
+#dreams .dl{position:absolute;bottom:10%;max-width:70%;color:var(--mid);font-size:13px;opacity:0;animation:dl 7s ease-in-out forwards;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;filter:blur(.4px)}
+@keyframes dl{0%{opacity:0;transform:translateY(20px)}20%{opacity:.5}80%{opacity:.3}100%{opacity:0;transform:translateY(-120px);filter:blur(3px)}}
 #mine{position:absolute;left:24px;right:24px;bottom:84px;text-align:center;color:var(--mid);font-size:14px;pointer-events:none;opacity:0}
 #mine.go{animation:mine 2.6s var(--ease) forwards}
 @keyframes mine{0%{opacity:0;transform:translateY(14px)}12%{opacity:1;transform:none}70%{opacity:.8}100%{opacity:0;transform:translateY(-70px);filter:blur(4px)}}
