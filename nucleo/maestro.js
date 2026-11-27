@@ -4,48 +4,79 @@
    - etichette automatiche: emoji, segnali del linguaggio, tue conferme (pesi diversi per affidabilità)
    - autovalutazione: misura su esempi tenuti da parte, mai visti in allenamento
    - crescita: quando la rete smette di migliorare e ci sono abbastanza dati, aggiunge neuroni
-   - incertezza: dice quando non è sicura, così l'app può chiederti "stai scherzando?" */
+   - incertezza: dice quando non è sicura, così l'app può chiederti "stai scherzando?"
+   - studio: impara anche dalle letture (Wikipedia, libri…) e ricorda quali parole vengono da te e quali dai libri
+   - limiti di crescita diversi: piccoli sul telefono (che si allena da solo), grandi sul server */
 import { Rete, AFFETTI } from "./rete.js";
 import { istinto } from "./istinto.js";
 
 const tok = s => (s.toLowerCase().replace(/[’`]/g,"'").match(/[a-zàáèéìíòóùú]+/g) || []);
-const HMAX = 192;
+export const TELEFONO = { hmax: 192, lmax: 1, dmax: 40, vmax: 4000 };
+export const SERVER = { hmax: 512, lmax: 4, dmax: 128, vmax: 12000 };
+const arr = v => Array.isArray(v) ? v : v ? Object.values(v) : [];
 
 export class Maestro {
-  constructor(){ this.net = null; this.user = []; this.labels = new Map(); this.seedTrain = []; this.seedTest = []; this.userTest = []; this.hist = []; this.best = Infinity; this.stall = 0; this.allow = new Set(); this.rounds = 0; }
+  constructor(){ this.net = null; this.user = []; this.labels = new Map(); this.seedTrain = []; this.seedTest = []; this.userTest = []; this.libro = []; this.libroTest = []; this.libroSet = new Set(); this.studiate = new Set(); this.tue = new Set(); this.hist = []; this.best = Infinity; this.stall = 0; this.allow = new Set(); this.rounds = 0; this.lim = TELEFONO; }
 
-  init({ saved, corpus = [], labels = [], seed = 7 }){
+  init({ saved, corpus = [], labels = [], seed = 7, letture = [], limiti = TELEFONO }){
     this.net = saved ? Rete.load(saved) : new Rete({ seed, H: 16 });
-    this.seedTrain = []; this.seedTest = []; this.hist = []; this.best = Infinity; this.stall = 0; this.rounds = 0; // init si può ripetere (rete arrivata dal server)
-    if (saved && saved.maestro){ this.hist = saved.maestro.hist || []; this.best = saved.maestro.best ?? Infinity; this.rounds = saved.maestro.rounds || 0; }
+    this.seedTrain = []; this.seedTest = []; this.hist = []; this.best = Infinity; this.stall = 0; this.rounds = 0; this.studiate = new Set(); // init si può ripetere (rete arrivata dal server)
+    // i limiti non possono essere sotto ciò che la rete è già diventata (una rete cresciuta sul server resta com'è)
+    this.lim = { ...limiti, lmax: Math.max(limiti.lmax, this.net.L), dmax: Math.max(limiti.dmax, this.net.D) };
+    if (saved && saved.maestro){ this.hist = arr(saved.maestro.hist); this.best = saved.maestro.best ?? Infinity; this.rounds = saved.maestro.rounds || 0; arr(saved.maestro.studiate).forEach(w => this.studiate.add(w)); }
     // istinto: 85% per imparare, 15% per verificarsi (scelta deterministica)
     const S = istinto(AFFETTI);
     S.forEach((e, i) => { const ex = { ids: this.net.ids(tok(e.text)), lm: 0, lab: e.lab, mask: AFFETTI.map(() => 1) }; (i % 7 === 3 ? this.seedTest : this.seedTrain).push(ex); });
     this.setCorpus(corpus, labels);
+    this.setLetture(letture);
     return this.info();
   }
+  /* letture: frasi studiate. Entrano nel vocabolario solo le parole viste almeno 2 volte (o già note),
+     le più frequenti per prime, finché c'è posto; le altre diventano <unk> */
+  setLetture(letture = []){
+    this.libro = []; this.libroTest = []; this.libroSet = new Set();
+    const L = letture.map(x => typeof x === "string" ? x : x && x.x).filter(Boolean); if (!L.length){ this.aggiornaAllow(); return; }
+    const freq = new Map(); for (const l of L) for (const w of tok(l)) freq.set(w, (freq.get(w) || 0) + 1);
+    let posto = Math.max(0, this.lim.vmax - this.net.V);
+    const nuove = [...freq].filter(([w, c]) => c >= 2 && !this.net.idx.has(w) && w.length < 24).sort((a, b) => b[1] - a[1]);
+    const ok = new Set(); for (const [w] of nuove){ if (posto-- <= 0) break; ok.add(w); }
+    L.forEach((line, i) => {
+      const ws = tok(line); if (ws.length < 3) return;
+      const ids = ws.map(w => { if (this.net.idx.has(w)) return this.net.idx.get(w); if (ok.has(w)) return this.net.word(w); return 2; });
+      for (const w of ws) if (!this.tue.has(w) && this.net.idx.has(w)) this.studiate.add(w);
+      const ex = { ids, lm: 1, lab: null, mask: null, line };
+      (i % 25 === 12 && this.libroTest.length < 40 ? this.libroTest : this.libro).push(ex); this.libroSet.add(ws.join(" "));
+    });
+    this.aggiornaAllow();
+  }
+  aggiornaAllow(){ this.allow = new Set(["</s>", ...this.tue, ...[...this.studiate].filter(w => this.net.idx.has(w))]); }
+  /* le parole che conosce dai libri e non da te */
+  lessico(){ return [...this.studiate].filter(w => !this.tue.has(w)); }
   setCorpus(corpus, labels = []){
     this.labels = new Map(labels.map(l => [l.x, l]));
-    this.user = []; this.userTest = []; this.allow = new Set(["</s>"]);
+    this.user = []; this.userTest = []; this.tue = new Set();
     corpus.forEach((line, i) => {
-      const words = tok(line); if (!words.length) return; words.forEach(w => this.allow.add(w));
+      const words = tok(line); if (!words.length) return; words.forEach(w => { this.tue.add(w); this.studiate.delete(w); });
       const L = this.labels.get(line);
       const ex = { ids: this.net.ids(words), lm: 1, lab: L ? L.l : null, mask: L ? L.m.map(m => m*(L.w ?? 1)) : null, line };
       (corpus.length >= 30 && i % 10 === 9 ? this.userTest : this.user).push(ex);
     });
+    this.aggiornaAllow();
   }
   /* una nuova frase (con eventuali etichette) */
   osserva({ x, lab = null, mask = null, w = 1 }){
     const words = tok(x); if (!words.length) return;
-    words.forEach(v => this.allow.add(v));
+    words.forEach(v => { this.allow.add(v); this.tue.add(v); this.studiate.delete(v); });
     const ex = { ids: this.net.ids(words), lm: 1, lab, mask: mask ? mask.map(m => m*w) : null, line: x };
     this.user.push(ex); if (this.user.length > 800) this.user.shift();
   }
   batch(n = 8){
     const out = [], r = this.net.r;
     for (let i=0;i<n;i++){
-      const useSeed = !this.user.length || r() < (this.user.length < 40 ? .6 : .35);
-      const src = useSeed ? this.seedTrain : this.user;
+      // istinto (emozioni) · tue frasi · letture: le tue frasi restano le più importanti
+      const x = r(), lib = this.libro.length > 0, u = this.user.length > 0;
+      const pSeed = !u && !lib ? 1 : lib ? .25 : (this.user.length < 40 ? .6 : .35), pUser = !u ? 0 : lib ? .4 : 1 - pSeed;
+      const src = x < pSeed ? this.seedTrain : x < pSeed + pUser ? this.user : this.libro;
       const ex = src[Math.floor(r()*src.length)];
       out.push({ ...ex, drop: .25 });
     }
@@ -75,19 +106,27 @@ export class Maestro {
     }
     const capisce = tot ? ok/tot : 0;
     const parla = this.userTest.length ? net.evalLoss(this.userTest.map(e => ({ ...e, lab:null }))) : null;
-    const score = bce/Math.max(1, this.seedTest.length) + (parla ?? 0);
-    this.hist.push({ t: Date.now(), capisce: +capisce.toFixed(3), parla: parla != null ? +parla.toFixed(3) : null, H: net.H }); if (this.hist.length > 80) this.hist.shift();
+    const legge = this.libroTest.length ? net.evalLoss(this.libroTest) : null;
+    const score = bce/Math.max(1, this.seedTest.length) + (parla ?? 0) + (legge ?? 0)*.5;
+    this.hist.push({ t: Date.now(), capisce: +capisce.toFixed(3), parla: parla != null ? +parla.toFixed(3) : null, legge: legge != null ? +legge.toFixed(3) : null, H: net.H, L: net.L }); if (this.hist.length > 80) this.hist.shift();
     let grew = null;
     if (grow){
       if (score < this.best*.98){ this.best = score; this.stall = 0; } else this.stall++;
-      const data = this.user.length + this.seedTrain.length/3;
-      const room = Math.min(HMAX, Math.round(16 + 6*Math.sqrt(this.user.length + this.seedTrain.length/6)));
-      if (this.stall >= 3 && net.H < room){
-        const to = Math.min(room, Math.ceil(net.H*1.5/8)*8);
-        net.widen(to); grew = { to, from: net.growth[net.growth.length-1].from }; this.stall = 0; this.best = Infinity;
+      // quanto può crescere dipende da quanto ha da imparare: niente tetto fisso, solo quello della macchina che lo allena
+      const N = this.user.length + this.seedTrain.length/6 + this.libro.length/4;
+      const room = Math.min(this.lim.hmax, Math.round(16 + 6*Math.sqrt(N)));
+      if (this.stall >= 3){
+        const H = net.H;
+        if (H < room){
+          const to = Math.min(room, Math.ceil(H*1.5/8)*8); net.widen(to);
+          const d = Math.min(this.lim.dmax, Math.ceil(to/4/8)*8); if (d > net.D) net.widenD(d);
+          grew = { from: H, to, D: net.D }; this.stall = 0; this.best = Infinity;
+        } else if (net.L < this.lim.lmax && H >= 128 && this.libro.length >= 1500*net.L){
+          net.deepen(); grew = { from: H, to: H, strati: net.L }; this.stall = 0; this.best = Infinity;
+        }
       }
     }
-    return { capisce, parla, grew };
+    return { capisce, parla, legge, grew };
   }
   senti(text){
     const words = tok(text); if (!words.length) return null;
@@ -98,7 +137,7 @@ export class Maestro {
     o._incerto = top > .35 && top < .62;
     return o;
   }
-  parla({ seeds = [], n = 40, k = 6, max = 12, temp = .8 }){
+  parla({ seeds = [], n = 40, k = 6, max = 12, temp = .8, libero = true }){
     if (this.user.length < 6 || this.net.steps < 600) return [];
     const known = new Set(this.user.map(e => e.line).filter(Boolean)), seen = new Set(), out = [];
     const lines = [...known].map(l => new Set(tok(l)));
@@ -107,19 +146,19 @@ export class Maestro {
     for (const sd of seeds){ for (const e of this.user){ if (!e.line) continue; const ws = tok(e.line), j = ws.indexOf(sd); if (j >= 0) prefixes.push(ws.slice(0, Math.max(1, j))); } }
     for (let i=0;i<n;i++){
       const seed = prefixes.length && i % 3 === 0 ? prefixes[Math.floor(this.net.r()*prefixes.length)] : [];
-      const g = this.net.gen({ seed, allow: this.allow, temp: temp + (i%3)*.12, max });
+      const g = this.net.gen({ seed, allow: libero ? this.allow : new Set(["</s>", ...this.tue]), temp: temp + (i%3)*.12, max });
       const ws = g.x.split(" ");
-      if (ws.length < 3 || seen.has(g.x) || known.has(g.x)) continue;
+      if (ws.length < 3 || seen.has(g.x) || known.has(g.x) || this.libroSet.has(g.x)) continue;   // niente copie, né tue né dei libri
       // deve essere davvero nuova: non una tua frase con una parola cambiata
       const set = new Set(ws); let maxJ = 0;
       for (const L of lines){ let inter = 0; for (const w of L) if (set.has(w)) inter++; const j = inter / (L.size + set.size - inter); if (j > maxJ) maxJ = j; }
       if (maxJ > .6) continue;
       seen.add(g.x);
       const rel = seeds.filter(s => ws.includes(s)).length;
-      out.push({ x: g.x, lp: g.lp, rel });
+      out.push({ x: g.x, lp: g.lp, rel, libro: ws.filter(w => this.studiate.has(w) && !this.tue.has(w)) });
     }
     return out.sort((a,b) => (b.rel - a.rel) || (b.lp - a.lp)).slice(0, k);
   }
-  info(){ const n = this.net; return { H: n.H, D: n.D, V: n.V, params: n.params, steps: n.steps, growth: n.growth, hist: this.hist, frasi: this.user.length + this.userTest.length, last: this.hist[this.hist.length-1] || null }; }
-  save(){ const d = this.net.save(); d.maestro = { hist: this.hist, best: Number.isFinite(this.best) ? this.best : null, rounds: this.rounds }; return d; }
+  info(){ const n = this.net; return { H: n.H, D: n.D, L: n.L, V: n.V, params: n.params, steps: n.steps, growth: n.growth, hist: this.hist, frasi: this.user.length + this.userTest.length, letture: this.libro.length + this.libroTest.length, studiate: this.lessico().length, last: this.hist[this.hist.length-1] || null }; }
+  save(half = false){ const d = this.net.save(half); d.maestro = { hist: this.hist, best: Number.isFinite(this.best) ? this.best : null, rounds: this.rounds, studiate: this.lessico() }; return d; }
 }

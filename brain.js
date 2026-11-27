@@ -355,9 +355,13 @@ export const G = {
 };
 
 /* ---------- utilità di generazione ---------- */
+/* parole che ha studiato da solo (Wikipedia, libri…): può usarle, ma restano distinte dalle tue */
+let STUDIATE = new Set();
+export function setStudiate(ws){ STUDIATE = ws instanceof Set ? ws : new Set(ws || []); }
+export const studiata = w => STUDIATE.has(w);
 export function makeCtx(S, phase, now, rnd){
   const inn = innate(phase);
-  const knows = w => !!S.words[w] || inn.has(w) || /^\d+$/.test(w);
+  const knows = w => !!S.words[w] || inn.has(w) || /^\d+$/.test(w) || (phase >= 3 && STUDIATE.has(w));
   const contentWords = (min=1) => Object.keys(S.words).filter(w=>!STOP.has(w) && w.length>2 && S.words[w].c>=min);
   const pick = arr => arr[Math.floor(rnd()*arr.length)];
   const recent = S.log.filter(l=>l.w==="c").slice(-8).map(l=>norm(l.x));

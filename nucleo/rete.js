@@ -1,13 +1,17 @@
 /* nucleo · rete
-   Rete neurale ricorrente (GRU) scritta da zero, che CRESCE DA SOLA.
+   Rete neurale ricorrente (GRU) scritta da zero, che CRESCE DA SOLA, in larghezza e in profondità.
    - parla: modello di linguaggio parola per parola
    - sente: testa affettiva che stima gioia, tristezza, rabbia, paura, affetto, ironia, stanchezza, sorpresa
    - generalizza: ogni parola è anche la somma dei suoi trigrammi di lettere (triste ≈ tristezza ≈ tristissimo)
-   - cresce: aggiunge neuroni con Net2Wider (la funzione resta identica, poi impara di più)
+   - cresce in larghezza: aggiunge neuroni con Net2Wider (la funzione resta identica, poi impara di più)
+   - cresce in profondità: aggiunge strati residui che nascono "spenti" (R = 0) e si accendono imparando
+   - allarga le parole: embedding più ricchi (nuove dimensioni con pesi d'ingresso a zero)
+   - vocabolario grande: softmax campionata in allenamento (costo indipendente dal numero di parole)
    Backprop through time e ottimizzatore Adam scritti a mano. */
 
 export const AFFETTI = ["gioia","tristezza","rabbia","paura","affetto","ironia","stanchezza","sorpresa"];
-const K = AFFETTI.length, BUCKETS = 2048;
+const K = AFFETTI.length, BUCKETS = 2048, SAMPLE = 700, NEG = 256;
+const GATES = ["Wz","Wr","Wn","Uz","Ur","Un","bz","br","bn"];
 
 function rng(seed){ let a = seed|0; return () => { a |= 0; a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
 function randn(r){ let u = 0, v = 0; while (!u) u = r(); while (!v) v = r(); return Math.sqrt(-2*Math.log(u))*Math.cos(2*Math.PI*v); }
@@ -15,25 +19,67 @@ const sig = x => 1/(1+Math.exp(-x));
 function hash(s){ let h = 2166136261; for (let i=0;i<s.length;i++){ h ^= s.charCodeAt(i); h = Math.imul(h, 16777619); } return (h>>>0) % BUCKETS; }
 function trigrams(w){ if (w.startsWith("<")) return []; const s = "<"+w+">", out = []; for (let i=0;i<s.length-2;i++) out.push(hash(s.slice(i,i+3))); return out; }
 const b64 = {
-  enc(f32){ const u = new Uint8Array(f32.buffer, f32.byteOffset, f32.byteLength); let s = ""; for (let i=0;i<u.length;i+=0x8000) s += String.fromCharCode.apply(null, u.subarray(i, i+0x8000)); return btoa(s); },
-  dec(str){ const s = atob(str), u = new Uint8Array(s.length); for (let i=0;i<s.length;i++) u[i] = s.charCodeAt(i); return new Float32Array(u.buffer); }
+  enc(ta){ const u = new Uint8Array(ta.buffer, ta.byteOffset, ta.byteLength); let s = ""; for (let i=0;i<u.length;i+=0x8000) s += String.fromCharCode.apply(null, u.subarray(i, i+0x8000)); return btoa(s); },
+  bytes(str){ const s = atob(str), u = new Uint8Array(s.length); for (let i=0;i<s.length;i++) u[i] = s.charCodeAt(i); return u; },
+  dec(str){ return new Float32Array(this.bytes(str).buffer); }
 };
+/* mezza precisione (16 bit): la rete pesa la metà quando viaggia verso il telefono */
+const _f = new Float32Array(1), _u = new Uint32Array(_f.buffer);
+function toHalf(v){
+  _f[0] = v; const x = _u[0], s = (x >>> 16) & 0x8000, e = ((x >>> 23) & 0xff) - 112; let m = x & 0x7fffff;
+  if (e <= 0){ if (e < -10) return s; m = (m | 0x800000) >> (1 - e); return s | ((m + 0x1000) >> 13); }
+  if (e >= 31) return s | 0x7bff;                       // satura al massimo finito
+  return s | Math.min(0x7bff, (e << 10) + ((m + 0x1000) >> 13));
+}
+let HALF = null;
+function halfTable(){ if (HALF) return HALF; HALF = new Float32Array(65536);
+  for (let h=0;h<65536;h++){ const s = h & 0x8000 ? -1 : 1, e = (h >> 10) & 31, m = h & 1023;
+    HALF[h] = e === 0 ? s*m*5.960464477539063e-8 : e === 31 ? (m ? NaN : s*Infinity) : s*(1 + m/1024)*Math.pow(2, e-15); }
+  return HALF; }
+export const mezza = { toHalf, enc(f32){ const h = new Uint16Array(f32.length); for (let i=0;i<f32.length;i++) h[i] = toHalf(f32[i]); return b64.enc(h); },
+  dec(str){ const T = halfTable(), u = b64.bytes(str), h = new Uint16Array(u.buffer, 0, u.length >> 1), o = new Float32Array(h.length); for (let i=0;i<h.length;i++) o[i] = T[h[i]]; return o; } };
 
-/* parametro: matrice righe×colonne con gradiente e stato di Adam */
+/* parametro: matrice righe×colonne. Gradiente e stato di Adam nascono solo quando servono
+   (un telefono che usa soltanto una rete grande non spreca memoria per allenarla) */
 class P {
-  constructor(r, c, init){ this.r = r; this.c = c; this.d = new Float32Array(r*c); this.g = new Float32Array(r*c); this.m = new Float32Array(r*c); this.v = new Float32Array(r*c); if (init) for (let i=0;i<this.d.length;i++) this.d[i] = init(); }
+  constructor(r, c, init){ this.r = r; this.c = c; this.d = new Float32Array(r*c); this._g = this._m = this._v = null; if (init) for (let i=0;i<this.d.length;i++) this.d[i] = init(); }
+  get g(){ return this._g || (this._g = new Float32Array(this.d.length)); }
+  get m(){ return this._m || (this._m = new Float32Array(this.d.length)); }
+  get v(){ return this._v || (this._v = new Float32Array(this.d.length)); }
+  get size(){ return this.r*this.c; }
+  reset(){ this._m = this._v = null; }
   addRows(k, init){ // per il vocabolario che cresce
-    const n = (this.r+k)*this.c;
-    if (n > this.d.length){ const cap = Math.ceil(n*1.5); for (const f of ["d","g","m","v"]){ const a = new Float32Array(cap); a.set(this[f].subarray(0, this.r*this.c)); this[f] = a; } }
-    for (let i=this.r*this.c;i<n;i++){ this.d[i] = init ? init() : 0; this.g[i] = 0; this.m[i] = 0; this.v[i] = 0; }
+    const n = (this.r+k)*this.c, old = this.r*this.c;
+    if (n > this.d.length){ const cap = Math.ceil(n*1.5), grow = a => { const b = new Float32Array(cap); b.set(a.subarray(0, old)); return b; };
+      this.d = grow(this.d); if (this._g) this._g = grow(this._g); if (this._m) this._m = grow(this._m); if (this._v) this._v = grow(this._v); }
+    for (let i=old;i<n;i++){ this.d[i] = init ? init() : 0; if (this._g) this._g[i] = 0; if (this._m) this._m[i] = 0; if (this._v) this._v[i] = 0; }
     this.r += k;
   }
-  get size(){ return this.r*this.c; }
+  addCols(k, init){ // per parole più ricche: nuove colonne in coda a ogni riga
+    const c = this.c + k, d = new Float32Array(this.r*c);
+    for (let i=0;i<this.r;i++){ d.set(this.d.subarray(i*this.c, (i+1)*this.c), i*c); for (let j=this.c;j<c;j++) d[i*c+j] = init ? init() : 0; }
+    this.d = d; this.c = c; this._g = this._m = this._v = null;
+  }
+}
+
+/* le due direzioni principali di un insieme di vettori (metodo delle potenze), coordinate normalizzate in [-1, 1] */
+function pca2(X, dim, r){
+  const n = X.length, mean = new Float32Array(dim); for (const x of X) for (let i=0;i<dim;i++) mean[i] += x[i]/n;
+  const C = X.map(x => { const y = new Float32Array(dim); for (let i=0;i<dim;i++) y[i] = x[i] - mean[i]; return y; }), comps = [];
+  for (let c=0;c<2;c++){ let v = Array.from({length:dim}, () => r()-.5);
+    for (let it=0;it<24;it++){ const nv = new Float32Array(dim);
+      for (const x of C){ let d = 0; for (let i=0;i<dim;i++) d += x[i]*v[i]; for (let i=0;i<dim;i++) nv[i] += d*x[i]; }
+      for (const q of comps){ let d = 0; for (let i=0;i<dim;i++) d += nv[i]*q[i]; for (let i=0;i<dim;i++) nv[i] -= d*q[i]; }
+      let nn = 0; for (let i=0;i<dim;i++) nn += nv[i]*nv[i]; nn = Math.sqrt(nn) || 1; v = Array.from(nv, t => t/nn); }
+    comps.push(v); }
+  const P = C.map(x => comps.map(q => { let d = 0; for (let i=0;i<dim;i++) d += x[i]*q[i]; return d; }));
+  for (const k of [0, 1]){ const m = Math.max(1e-9, ...P.map(p => Math.abs(p[k]))); P.forEach(p => p[k] = +(p[k]/m).toFixed(3)); }
+  return P;
 }
 
 export class Rete {
   constructor(o = {}){
-    this.D = o.D || 40; this.H = o.H || 16; this.r = rng(o.seed || 7);
+    this.D = o.D || 40; this.H = o.H || 16; this.L = 1; this.r = rng(o.seed || 7);
     this.vocab = []; this.idx = new Map(); this.tri = [];
     const D = this.D, H = this.H, r = this.r, s = (n) => () => randn(r)*Math.sqrt(1/n);
     this.p = {
@@ -60,39 +106,80 @@ export class Rete {
     if (!drop) for (let i=0;i<D;i++) x[i] = E[id*D+i];
     if (tr.length){ const k = 1/tr.length; for (const b of tr) for (let i=0;i<D;i++) x[i] += C[b*D+i]*k; }
     return x; }
+  /* i parametri di uno strato: lo strato 0 legge le parole, gli altri leggono lo strato sotto */
+  lay(l){ const s = l ? String(l) : "", p = this.p, o = { IN: l ? this.H : this.D, R: l ? p["R"+s] : null }; for (const k of GATES) o[k] = p[k+s]; return o; }
 
-  /* ---------- forward su una frase ---------- */
-  fwd(ids, lm = true, drop = 0){
-    const { D, H } = this, p = this.p, seq = [0, ...ids], T = seq.length, st = [];
-    let h = new Float32Array(H);
-    const pool = new Float32Array(H);
-    for (let t=0;t<T;t++){
-      const dw = drop > 0 && t > 0 && this.tri[seq[t]].length > 0 && this.r() < drop;
-      const x = this.emb(seq[t], dw), z = new Float32Array(H), rr = new Float32Array(H), n = new Float32Array(H), Unh = new Float32Array(H), hn = new Float32Array(H);
+  /* ---------- uno strato GRU su tutta la frase ---------- */
+  gru(Lp, IN, xs){
+    const H = this.H, out = []; let h = new Float32Array(H);
+    const Wz = Lp.Wz.d, Wr = Lp.Wr.d, Wn = Lp.Wn.d, Uz = Lp.Uz.d, Ur = Lp.Ur.d, Un = Lp.Un.d, bz = Lp.bz.d, br = Lp.br.d, bn = Lp.bn.d;
+    for (const x of xs){
+      const z = new Float32Array(H), rr = new Float32Array(H), n = new Float32Array(H), Unh = new Float32Array(H), hn = new Float32Array(H);
       for (let j=0;j<H;j++){
-        let sz = p.bz.d[j], sr = p.br.d[j], sn = p.bn.d[j], uz = 0, ur = 0, un = 0;
-        const oj = j*D, hj = j*H;
-        for (let i=0;i<D;i++){ const xi = x[i]; sz += p.Wz.d[oj+i]*xi; sr += p.Wr.d[oj+i]*xi; sn += p.Wn.d[oj+i]*xi; }
-        for (let i=0;i<H;i++){ const hi = h[i]; uz += p.Uz.d[hj+i]*hi; ur += p.Ur.d[hj+i]*hi; un += p.Un.d[hj+i]*hi; }
+        let sz = bz[j], sr = br[j], sn = bn[j], uz = 0, ur = 0, un = 0;
+        const oj = j*IN, hj = j*H;
+        for (let i=0;i<IN;i++){ const xi = x[i]; sz += Wz[oj+i]*xi; sr += Wr[oj+i]*xi; sn += Wn[oj+i]*xi; }
+        for (let i=0;i<H;i++){ const hi = h[i]; uz += Uz[hj+i]*hi; ur += Ur[hj+i]*hi; un += Un[hj+i]*hi; }
         z[j] = sig(sz+uz); rr[j] = sig(sr+ur); Unh[j] = un; n[j] = Math.tanh(sn + rr[j]*un);
         hn[j] = (1-z[j])*n[j] + z[j]*h[j];
       }
-      st.push({ x, hp: h, z, r: rr, n, Unh, h: hn, id: seq[t], dw });
-      for (let j=0;j<H;j++) pool[j] += hn[j]/T;
+      out.push({ x, hp: h, z, r: rr, n, Unh, h: hn });
       h = hn;
     }
-    const a = new Float32Array(K);
+    return out;
+  }
+  /* backprop through time di uno strato: ext[t] = gradiente che arriva da sopra su h_t; restituisce il gradiente sugli ingressi */
+  bptt(Lp, IN, sts, ext){
+    const H = this.H, T = sts.length, dIn = new Array(T); let carry = new Float32Array(H);
+    for (let t=T-1;t>=0;t--){
+      const s = sts[t], d = new Float32Array(H), dhp = new Float32Array(H), dx = new Float32Array(IN);
+      for (let j=0;j<H;j++) d[j] = ext[t][j] + carry[j];
+      for (let j=0;j<H;j++){
+        const dn = d[j]*(1-s.z[j]), dz = d[j]*(s.hp[j]-s.n[j]);
+        dhp[j] += d[j]*s.z[j];
+        const dnp = dn*(1-s.n[j]*s.n[j]);
+        const dr = dnp*s.Unh[j], drp = dr*s.r[j]*(1-s.r[j]), dzp = dz*s.z[j]*(1-s.z[j]), du = dnp*s.r[j];
+        Lp.bn.g[j] += dnp; Lp.br.g[j] += drp; Lp.bz.g[j] += dzp;
+        const oj = j*IN, hj = j*H, gWn = Lp.Wn.g, gWr = Lp.Wr.g, gWz = Lp.Wz.g, Wn = Lp.Wn.d, Wr = Lp.Wr.d, Wz = Lp.Wz.d;
+        for (let i=0;i<IN;i++){ const xi = s.x[i];
+          gWn[oj+i] += dnp*xi; gWr[oj+i] += drp*xi; gWz[oj+i] += dzp*xi;
+          dx[i] += Wn[oj+i]*dnp + Wr[oj+i]*drp + Wz[oj+i]*dzp; }
+        const gUn = Lp.Un.g, gUr = Lp.Ur.g, gUz = Lp.Uz.g, Un = Lp.Un.d, Ur = Lp.Ur.d, Uz = Lp.Uz.d;
+        for (let i=0;i<H;i++){ const hi = s.hp[i];
+          gUn[hj+i] += du*hi; gUr[hj+i] += drp*hi; gUz[hj+i] += dzp*hi;
+          dhp[i] += Un[hj+i]*du + Ur[hj+i]*drp + Uz[hj+i]*dzp; }
+      }
+      dIn[t] = dx; carry = dhp;
+    }
+    return dIn;
+  }
+
+  /* ---------- forward su una frase ----------
+     strato 0: y0 = h0;  strato l: y_l = y_(l-1) + R_l · h_l  (residuo: un nuovo strato con R = 0 non cambia nulla) */
+  fwd(ids, lm = true, drop = 0){
+    const H = this.H, seq = [0, ...ids], T = seq.length, xs = [], meta = [];
+    for (let t=0;t<T;t++){ const dw = drop > 0 && t > 0 && this.tri[seq[t]].length > 0 && this.r() < drop; xs.push(this.emb(seq[t], dw)); meta.push({ id: seq[t], dw }); }
+    const layers = [this.gru(this.lay(0), this.D, xs)];
+    let ys = layers[0].map(s => s.h);
+    for (let l=1;l<this.L;l++){
+      const Lp = this.lay(l), st = this.gru(Lp, H, ys), R = Lp.R.d; layers.push(st);
+      ys = ys.map((y, t) => { const o = new Float32Array(H), h = st[t].h; for (let j=0;j<H;j++){ let s = y[j]; const oj = j*H; for (let i=0;i<H;i++) s += R[oj+i]*h[i]; o[j] = s; } return o; });
+    }
+    const st = meta.map((m, t) => ({ ...m, h: ys[t] }));
+    const pool = new Float32Array(H); for (const y of ys) for (let j=0;j<H;j++) pool[j] += y[j]/T;
+    const p = this.p, a = new Float32Array(K);
     for (let k=0;k<K;k++){ let s = p.ba.d[k]; for (let j=0;j<H;j++) s += p.Wa.d[k*H+j]*pool[j]; a[k] = sig(s); }
-    return { st, pool, a, T };
+    return { st, layers, pool, a, T };
   }
   probs(h){ const V = this.V, H = this.H, Wo = this.p.Wo.d, bo = this.p.bo.d, z = new Float32Array(V); let mx = -1e9;
     for (let v=0;v<V;v++){ let s = bo[v]; const o = v*H; for (let j=0;j<H;j++) s += Wo[o+j]*h[j]; z[v] = s; if (s > mx) mx = s; }
     let sum = 0; for (let v=0;v<V;v++){ z[v] = Math.exp(z[v]-mx); sum += z[v]; } for (let v=0;v<V;v++) z[v] /= sum; return z; }
 
   /* ---------- backward: accumula i gradienti, restituisce la perdita ----------
-     ex = { ids, lm: peso della parte linguistica, lab: [K] in 0..1 o null, mask: [K] pesi } */
-  grad(ex){
-    const { D, H } = this, p = this.p, f = this.fwd(ex.ids, true, ex.drop || 0), { st, pool, a, T } = f;
+     ex = { ids, lm: peso della parte linguistica, lab: [K] in 0..1 o null, mask: [K] pesi }
+     full = softmax su tutto il vocabolario (valutazione); altrimenti, se le parole sono tante, campionata */
+  grad(ex, full = false){
+    const H = this.H, p = this.p, f = this.fwd(ex.ids, true, ex.drop || 0), { st, pool, a, T } = f;
     let loss = 0;
     const dh = st.map(() => new Float32Array(H));
     // testa affettiva (BCE sulle dimensioni etichettate)
@@ -103,38 +190,39 @@ export class Rete {
         const g = w*(a[k]-y); p.ba.g[k] += g; for (let j=0;j<H;j++){ p.Wa.g[k*H+j] += g*pool[j]; dpool[j] += g*p.Wa.d[k*H+j]; } }
       for (let t=0;t<T;t++) for (let j=0;j<H;j++) dh[t][j] += dpool[j]/T;
     }
-    // testa linguistica: da h_t prevede la parola t+1 (e </s> alla fine)
+    // testa linguistica: da y_t prevede la parola t+1 (e </s> alla fine)
     if (ex.lm){
-      const tgt = [...ex.ids, 1], wl = ex.lm/T;
+      const tgt = [...ex.ids, 1], wl = ex.lm/T, Wo = p.Wo.d, bo = p.bo.d, gWo = p.Wo.g, gbo = p.bo.g;
+      let cand = null;
+      if (!full && this.V > SAMPLE){   // softmax campionata: le parole giuste + NEG parole a caso
+        const rr = rng((Math.imul(this.steps + 1, 2654435761) ^ Math.imul(tgt[0] + 7, 40503) ^ T) | 0), set = new Set(tgt);
+        while (set.size < tgt.length + NEG) set.add(3 + Math.floor(rr()*(this.V - 3)));
+        cand = [...set];
+      }
+      const NC = cand ? cand.length : this.V, z = new Float32Array(NC);
       for (let t=0;t<T;t++){
-        const pr = this.probs(st[t].h), y = tgt[t]; loss -= wl*Math.log(pr[y]+1e-9);
-        for (let v=0;v<this.V;v++){ const g = wl*(pr[v] - (v===y?1:0)); if (Math.abs(g) < 1e-7) continue; p.bo.g[v] += g; const o = v*H; for (let j=0;j<H;j++){ p.Wo.g[o+j] += g*st[t].h[j]; dh[t][j] += g*p.Wo.d[o+j]; } }
+        const h = st[t].h, y = tgt[t]; let mx = -1e9, yi = -1;
+        for (let c=0;c<NC;c++){ const v = cand ? cand[c] : c, o = v*H; let s = bo[v]; for (let j=0;j<H;j++) s += Wo[o+j]*h[j]; z[c] = s; if (s > mx) mx = s; if (v === y) yi = c; }
+        let sum = 0; for (let c=0;c<NC;c++){ z[c] = Math.exp(z[c]-mx); sum += z[c]; }
+        loss -= wl*Math.log(z[yi]/sum + 1e-9);
+        for (let c=0;c<NC;c++){ const v = cand ? cand[c] : c, g = wl*(z[c]/sum - (c===yi?1:0)); if (Math.abs(g) < 1e-7) continue; gbo[v] += g; const o = v*H, dht = dh[t]; for (let j=0;j<H;j++){ gWo[o+j] += g*h[j]; dht[j] += g*Wo[o+j]; } }
       }
     }
-    // backprop through time
-    let carry = new Float32Array(H);
-    for (let t=T-1;t>=0;t--){
-      const s = st[t], d = new Float32Array(H), dhp = new Float32Array(H), dx = new Float32Array(D);
-      for (let j=0;j<H;j++) d[j] = dh[t][j] + carry[j];
-      for (let j=0;j<H;j++){
-        const dn = d[j]*(1-s.z[j]), dz = d[j]*(s.hp[j]-s.n[j]);
-        dhp[j] += d[j]*s.z[j];
-        const dnp = dn*(1-s.n[j]*s.n[j]);
-        const dr = dnp*s.Unh[j], drp = dr*s.r[j]*(1-s.r[j]), dzp = dz*s.z[j]*(1-s.z[j]), du = dnp*s.r[j];
-        p.bn.g[j] += dnp; p.br.g[j] += drp; p.bz.g[j] += dzp;
-        const oj = j*D, hj = j*H;
-        for (let i=0;i<D;i++){ const xi = s.x[i];
-          p.Wn.g[oj+i] += dnp*xi; p.Wr.g[oj+i] += drp*xi; p.Wz.g[oj+i] += dzp*xi;
-          dx[i] += p.Wn.d[oj+i]*dnp + p.Wr.d[oj+i]*drp + p.Wz.d[oj+i]*dzp; }
-        for (let i=0;i<H;i++){ const hi = s.hp[i];
-          p.Un.g[hj+i] += du*hi; p.Ur.g[hj+i] += drp*hi; p.Uz.g[hj+i] += dzp*hi;
-          dhp[i] += p.Un.d[hj+i]*du + p.Ur.d[hj+i]*drp + p.Uz.d[hj+i]*dzp; }
-      }
-      // embedding: parola + trigrammi
-      const id = s.id, tr = this.tri[id];
-      if (!s.dw) for (let i=0;i<D;i++) p.E.g[id*D+i] += dx[i];
+    // dall'alto verso il basso: ogni strato residuo, poi lo strato delle parole
+    let dY = dh;
+    for (let l=this.L-1;l>=1;l--){
+      const Lp = this.lay(l), sl = f.layers[l], R = Lp.R, Rd = R.d, Rg = R.g, ext = sl.map(() => new Float32Array(H));
+      for (let t=0;t<T;t++){ const dy = dY[t], h = sl[t].h, e = ext[t];
+        for (let j=0;j<H;j++){ const g = dy[j]; if (!g) continue; const o = j*H; for (let i=0;i<H;i++){ Rg[o+i] += g*h[i]; e[i] += g*Rd[o+i]; } } }
+      const dIn = this.bptt(Lp, H, sl, ext);
+      dY = dY.map((dy, t) => { const o = new Float32Array(H), di = dIn[t]; for (let j=0;j<H;j++) o[j] = dy[j] + di[j]; return o; });
+    }
+    const dX = this.bptt(this.lay(0), this.D, f.layers[0], dY), D = this.D;
+    // embedding: parola + trigrammi
+    for (let t=0;t<T;t++){
+      const id = st[t].id, tr = this.tri[id], dx = dX[t];
+      if (!st[t].dw) for (let i=0;i<D;i++) p.E.g[id*D+i] += dx[i];
       if (tr.length){ const k = 1/tr.length; for (const b of tr) for (let i=0;i<D;i++) p.C.g[b*D+i] += dx[i]*k; }
-      carry = dhp;
     }
     return loss;
   }
@@ -149,8 +237,8 @@ export class Rete {
   }
   /* allena su un lotto di esempi */
   train(batch, lr = .01){ let loss = 0; for (const ex of batch) loss += this.grad(ex); this.update(lr, batch.length); this.steps += batch.length; return loss/batch.length; }
-  /* perdita senza aggiornare (per la valutazione) */
-  evalLoss(exs){ let loss = 0; for (const ex of exs){ loss += this.grad(ex); } for (const q of Object.values(this.p)) q.g.fill(0); return exs.length ? loss/exs.length : null; }
+  /* perdita senza aggiornare (per la valutazione, sempre sul vocabolario intero) */
+  evalLoss(exs){ let loss = 0; for (const ex of exs){ loss += this.grad(ex, true); } for (const q of Object.values(this.p)) q.g.fill(0); return exs.length ? loss/exs.length : null; }
 
   /* ---------- usi ---------- */
   feel(words){ const f = this.fwd(this.ids(words, false)); const o = {}; AFFETTI.forEach((k,i) => o[k] = +f.a[i].toFixed(3)); return o; }
@@ -188,30 +276,76 @@ export class Rete {
     return ws.map((w, k) => ({ w, x: X[k].reduce((s,t,i)=>s+t*comps[0][i],0), y: X[k].reduce((s,t,i)=>s+t*comps[1][i],0) }));
   }
 
-  /* ---------- crescita: Net2Wider (aggiunge neuroni senza cambiare cosa sa) ---------- */
+
+  /* ---------- per vederla: il connettoma (dove stanno i neuroni e le sinapsi più forti) e l'attività su una frase ---------- */
+  connettoma(maxEdges = 420){
+    const H = this.H, L = this.L, p = this.p, out = { H, L, D: this.D, V: this.V, layers: [], between: [], emo: [] };
+    const top = (vals, k) => { if (vals.length <= k) return vals; const a = Float32Array.from(vals, v => Math.abs(v[2])).sort(); const th = a[a.length - k]; return vals.filter(v => Math.abs(v[2]) >= th).slice(0, k); };
+    const per = Math.max(60, Math.floor(maxEdges / L));
+    for (let l=0;l<L;l++){
+      const Lp = this.lay(l), Un = Lp.Un.d, Uz = Lp.Uz.d, rows = [], edges = [], imp = new Float32Array(H);
+      for (let j=0;j<H;j++){ const r = new Float32Array(H); for (let i=0;i<H;i++){ const w = Un[j*H+i] + .5*Uz[j*H+i]; r[i] = w; imp[j] += w*w; if (i !== j) edges.push([i, j, w]); } rows.push(r); }
+      // i neuroni che lavorano insieme stanno vicini: posizione = le due direzioni principali dei loro pesi
+      const pos = pca2(rows, H, this.r), mx = Math.max(...imp) || 1;
+      out.layers.push({ pos, imp: Array.from(imp, v => +(Math.sqrt(v/mx)).toFixed(3)), edges: top(edges, per).map(([i, j, w]) => [i, j, +w.toFixed(3)]) });
+      if (l){ const W = Lp.Wn.d, R = Lp.R.d, e = []; for (let j=0;j<H;j++) for (let i=0;i<H;i++){ const w = W[j*H+i] + R[i*H+j]; e.push([i, j, w]); } out.between.push(top(e, Math.floor(per/2)).map(([i, j, w]) => [l, i, j, +w.toFixed(3)])); }
+    }
+    for (let k=0;k<AFFETTI.length;k++){ const e = []; for (let j=0;j<H;j++) e.push([k, j, p.Wa.d[k*H+j]]); out.emo.push(...top(e, 5).map(([k, j, w]) => [k, j, +w.toFixed(3)])); }
+    out.growth = this.growth;
+    return out;
+  }
+  attiva(words){
+    const f = this.fwd(this.ids(words, false), false);
+    return { words: ["·", ...words], acts: f.layers.map(st => st.map(s => Array.from(s.h, v => Math.round(v*100)))), a: Array.from(f.a, v => +v.toFixed(3)) };
+  }
+
+  /* ---------- crescita in larghezza: Net2Wider su tutti gli strati (aggiunge neuroni senza cambiare cosa sa) ---------- */
   widen(newH, noise = .01){
     const H = this.H; if (newH <= H) return;
     const g = Array.from({length:newH}, (_, i) => i < H ? i : Math.floor(this.r()*H));
     const cnt = new Float32Array(H); g.forEach(o => cnt[o]++);
     const p = this.p, D = this.D, nz = () => (this.r()-.5)*2*noise;
-    const rows = (q, cols) => { const n = new P(newH, cols); for (let i=0;i<newH;i++) for (let j=0;j<cols;j++) n.d[i*cols+j] = q.d[g[i]*cols+j] + (i>=H ? nz()*Math.abs(q.d[g[i]*cols+j]) : 0); return n; };
-    const rec = q => { const n = new P(newH, newH); for (let i=0;i<newH;i++) for (let j=0;j<newH;j++) n.d[i*newH+j] = q.d[g[i]*H+g[j]] / cnt[g[j]]; return n; };
+    // righe duplicate (con un filo di rumore per rompere la simmetria), colonne nello spazio dei neuroni divise
+    const rows = (q, cols) => { const n = new P(newH, cols); for (let i=0;i<newH;i++) for (let j=0;j<cols;j++){ const v = q.d[g[i]*cols+j]; n.d[i*cols+j] = v + (i>=H ? nz()*Math.abs(v) : 0); } return n; };
+    const rec = (q, noisy) => { const n = new P(newH, newH); for (let i=0;i<newH;i++) for (let j=0;j<newH;j++){ const v = q.d[g[i]*H+g[j]] / cnt[g[j]]; n.d[i*newH+j] = v + (noisy && i>=H ? nz()*Math.abs(v) : 0); } return n; };
     const cols = (q) => { const R = q.r, n = new P(0, newH); n.addRows(R); for (let v=0;v<R;v++) for (let j=0;j<newH;j++) n.d[v*newH+j] = q.d[v*H+g[j]] / cnt[g[j]]; return n; };
-    for (const k of ["Wz","Wr","Wn"]) p[k] = rows(p[k], D);
-    for (const k of ["bz","br","bn"]) p[k] = rows(p[k], 1);
-    for (const k of ["Uz","Ur","Un"]) p[k] = rec(p[k]);
+    for (let l=0;l<this.L;l++){
+      const s = l ? String(l) : "";
+      for (const k of ["Wz","Wr","Wn"]) p[k+s] = l ? rec(p[k+s], true) : rows(p[k+s], D);
+      for (const k of ["bz","br","bn"]) p[k+s] = rows(p[k+s], 1);
+      for (const k of ["Uz","Ur","Un"]) p[k+s] = rec(p[k+s], l > 0);
+      if (l) p["R"+s] = rec(p["R"+s], false);
+    }
     p.Wo = cols(p.Wo); p.Wa = cols(p.Wa);
-    for (const q of Object.values(p)){ q.m.fill(0); q.v.fill(0); }
+    for (const q of Object.values(p)) q.reset();
     this.t = 0; this.growth.push({ from:H, to:newH, steps:this.steps }); this.H = newH;
   }
+  /* ---------- crescita in profondità: un nuovo strato residuo, nato spento (non cambia nulla finché non impara) ---------- */
+  deepen(){
+    const l = this.L, H = this.H, r = this.r, s = (n) => () => randn(r)*Math.sqrt(1/n), p = this.p, k = String(l);
+    for (const q of ["Wz","Wr","Wn","Uz","Ur","Un"]) p[q+k] = new P(H, H, s(H));
+    for (const q of ["bz","br","bn"]) p[q+k] = new P(H, 1);
+    p["R"+k] = new P(H, H);
+    for (const q of Object.values(p)) q.reset();
+    this.t = 0; this.L++; this.growth.push({ from:H, to:H, strati:this.L, steps:this.steps });
+  }
+  /* ---------- parole più ricche: nuove dimensioni dell'embedding (ingresso a zero: non cambia nulla) ---------- */
+  widenD(newD){
+    const k = newD - this.D; if (k <= 0) return;
+    const p = this.p, r = this.r;
+    p.E.addCols(k, () => randn(r)*.05); p.C.addCols(k, () => randn(r)*.05);
+    for (const q of ["Wz","Wr","Wn"]) p[q].addCols(k, () => 0);
+    for (const q of Object.values(p)) q.reset();
+    this.t = 0; this.growth.push({ from:this.H, to:this.H, D:newD, steps:this.steps }); this.D = newD;
+  }
 
-  /* ---------- salvataggio ---------- */
-  save(){ const P_ = {}; for (const [k,q] of Object.entries(this.p)) P_[k] = [q.r, q.c, b64.enc(q.d.subarray(0, q.size))];
-    return { v:2, D:this.D, H:this.H, vocab:this.vocab, p:P_, steps:this.steps, growth:this.growth }; }
+  /* ---------- salvataggio (half = 16 bit, per viaggiare) ---------- */
+  save(half = false){ const P_ = {}; for (const [k,q] of Object.entries(this.p)){ const d = q.d.subarray(0, q.size); P_[k] = half ? [q.r, q.c, mezza.enc(d), "h"] : [q.r, q.c, b64.enc(d)]; }
+    return { v:3, D:this.D, H:this.H, L:this.L, vocab:this.vocab, p:P_, steps:this.steps, growth:this.growth }; }
   static load(d){
-    const n = new Rete({ D:d.D, H:d.H }); n.vocab = []; n.idx = new Map(); n.tri = [];
-    d.vocab.forEach((w,i) => { n.vocab.push(w); n.idx.set(w,i); n.tri.push(trigrams(w)); });
-    for (const [k,[r,c,s]] of Object.entries(d.p)){ const q = new P(r, c); q.d.set(b64.dec(s)); n.p[k] = q; }
+    const n = new Rete({ D:d.D, H:d.H }); n.L = d.L || 1; n.vocab = []; n.idx = new Map(); n.tri = [];
+    (d.vocab || []).forEach((w,i) => { n.vocab.push(w); n.idx.set(w,i); n.tri.push(trigrams(w)); });
+    for (const [k,[r,c,s,f]] of Object.entries(d.p)){ const q = new P(r, c); if (r*c) q.d.set(f === "h" ? mezza.dec(s) : b64.dec(s)); n.p[k] = q; }
     n.steps = d.steps||0; n.growth = d.growth||[]; return n;
   }
 }
