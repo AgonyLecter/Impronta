@@ -1,0 +1,847 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#000000">
+<title>impronta.</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Doto:wght@600;800;900&family=Geist+Mono:wght@300;400;500&display=swap" rel="stylesheet">
+<link rel="icon" id="fav" href="data:,">
+<style>
+/*
+VOICE  silenzioso, preciso, vivo: un oggetto che respira
+IDEA   un display a punti che nasce e cresce, come un Glyph Matrix
+PICTURE il volto a punti al centro: più cresce, più punti si accendono
+COLOUR nero puro, bianco, grigi; rosso solo come interruzione
+TYPE   Doto (dot-matrix) per nomi e numeri, Geist Mono per il testo
+*/
+:root{color-scheme:dark;--bg:#000;--ink:#f2f2f2;--mid:#8a8a8e;--dim:#3a3a3c;--line:#1c1c1e;--red:#e5161f}
+*{box-sizing:border-box;min-width:0;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;height:100%;background:var(--bg);color:var(--ink);overflow:hidden}
+body{font:15px/1.5 "Geist Mono",ui-monospace,monospace;-webkit-font-smoothing:antialiased}
+button{font:inherit;color:inherit;background:none;border:0;cursor:pointer}
+#app{height:100dvh;display:flex;flex-direction:column;padding:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);max-width:560px;margin:0 auto}
+header{display:flex;align-items:center;gap:10px;padding:14px 18px 4px}
+#logo{font-family:Doto,monospace;font-weight:900;font-size:22px;letter-spacing:.02em;user-select:none}
+#meta{flex:1;text-align:right;color:var(--mid);font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#menuBtn{width:44px;height:44px;margin-right:-10px;display:grid;place-items:center}
+#menuBtn i{display:block;width:4px;height:4px;border-radius:50%;background:var(--ink);box-shadow:-8px 0 0 var(--ink),8px 0 0 var(--ink)}
+main{flex:1;display:flex;flex-direction:column;min-height:0}
+#stage{position:relative;display:grid;place-items:center;padding:6px 0 0;touch-action:none;user-select:none;-webkit-user-select:none}
+#face{width:min(68vw,36dvh,330px);height:min(68vw,36dvh,330px);display:block}
+#hint{min-height:20px;margin-top:6px;color:var(--mid);font-size:12px;text-align:center;padding:0 24px;transition:opacity .6s}
+#plate{display:flex;align-items:baseline;justify-content:center;gap:14px;padding:2px 18px 6px}
+#cname{font-family:Doto,monospace;font-weight:800;font-size:26px;line-height:1}
+#stats{display:flex;gap:12px;color:var(--mid);font-size:12px}
+#stats button{color:var(--mid);padding:6px 0;position:relative}
+#stats button:focus-visible,#menuBtn:focus-visible,#send:focus-visible{outline:1px solid var(--ink);outline-offset:2px}
+.badge::after{content:"";position:absolute;top:4px;right:-7px;width:5px;height:5px;border-radius:50%;background:var(--red)}
+#feed{flex:1;overflow-y:auto;padding:8px 18px 10px;display:flex;flex-direction:column;gap:12px;-webkit-mask-image:linear-gradient(transparent,#000 22%);mask-image:linear-gradient(transparent,#000 22%);scrollbar-width:none}
+#feed::-webkit-scrollbar{display:none}
+#feed .sp{flex:1}
+.ln{max-width:88%;animation:in .35s ease-out}
+.ln.c{align-self:flex-start;font-size:17px;line-height:1.45;color:var(--ink)}
+.ln.u{align-self:flex-end;text-align:right;color:var(--mid);font-size:14px}
+.ln.c canvas{display:block;margin:2px 0}
+.ln .tr{display:block;color:var(--mid);font-size:12px;margin-top:4px}
+.ln.ghost{color:var(--dim)}
+.ln .cap{display:block;font-size:11px;color:var(--mid);margin-top:4px}
+.ln.sys{align-self:center;text-align:center;color:var(--mid);font-size:12px;max-width:100%}
+.ln.sys b{color:var(--red);font-weight:400}
+.typing{display:flex;gap:6px;padding:8px 0}
+.typing i{width:6px;height:6px;border-radius:50%;background:var(--ink);opacity:.25;animation:dot 1.1s infinite}
+.typing i:nth-child(2){animation-delay:.18s}.typing i:nth-child(3){animation-delay:.36s}
+@keyframes dot{40%{opacity:1}}
+@keyframes in{from{opacity:0;transform:translateY(6px)}}
+#bar{display:flex;align-items:center;gap:8px;margin:0 12px 12px;padding:6px 6px 6px 16px;border:1px solid var(--dim);border-radius:28px;transition:border-color .3s}
+#bar:focus-within{border-color:var(--mid)}
+#bar.off{opacity:.45}
+#inp{flex:1;background:none;border:0;outline:0;color:var(--ink);font:16px "Geist Mono",monospace;padding:10px 0}
+#inp::placeholder{color:var(--dim)}
+#cnt{font-family:Doto,monospace;font-weight:800;font-size:13px;color:var(--mid);white-space:nowrap}
+#cnt.full{color:var(--red)}
+#send{width:44px;height:44px;border-radius:50%;background:var(--ink);color:#000;font-size:20px;display:grid;place-items:center;flex:none}
+#send:disabled{background:var(--dim);color:#000}
+#sheet{position:fixed;inset:0;background:rgba(0,0,0,.72);display:flex;align-items:flex-end;justify-content:center;z-index:10;opacity:0;pointer-events:none;transition:opacity .25s}
+#sheet.on{opacity:1;pointer-events:auto}
+#sheet .pane{width:100%;max-width:560px;max-height:82dvh;overflow-y:auto;background:#0b0b0c;border-top:1px solid var(--dim);border-radius:22px 22px 0 0;padding:20px 20px calc(24px + env(safe-area-inset-bottom));transform:translateY(20px);transition:transform .25s}
+#sheet.on .pane{transform:none}
+.sh-h{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px}
+.sh-h h2{margin:0;font-family:Doto,monospace;font-weight:900;font-size:26px}
+.sh-h button{width:44px;height:44px;font-size:22px;color:var(--mid)}
+.row{display:flex;justify-content:space-between;gap:12px;padding:12px 0;border-bottom:1px solid var(--line);font-size:14px}
+.row span:last-child{color:var(--mid);text-align:right}
+.btn{display:inline-flex;align-items:center;justify-content:center;min-height:44px;padding:0 18px;border:1px solid var(--dim);border-radius:22px;font-size:14px;margin:6px 6px 0 0}
+.btn.red{border-color:var(--red);color:var(--red)}
+.code{font-family:Doto,monospace;font-weight:800;font-size:22px;letter-spacing:.06em;margin:4px 0 8px;word-break:break-all}
+.field{width:100%;background:none;border:1px solid var(--dim);border-radius:14px;color:var(--ink);font:16px "Geist Mono",monospace;padding:12px 14px;margin-top:8px;outline:0}
+.muted{color:var(--mid);font-size:12px}
+.entry{padding:12px 0;border-bottom:1px solid var(--line)}
+.entry time{display:block;color:var(--mid);font-size:11px;margin-bottom:4px}
+.poem{font-family:Doto,monospace;font-weight:800;font-size:24px;line-height:1.35;margin:10px 0 16px}
+.words{display:flex;flex-wrap:wrap;gap:8px}
+.words span{border:1px solid var(--dim);border-radius:14px;padding:5px 10px;font-size:13px}
+.words span small{color:var(--mid);margin-left:6px}
+#flash{position:fixed;inset:0;background:#fff;opacity:0;pointer-events:none;z-index:20;transition:opacity 1.2s}
+#flash.on{opacity:.9;transition:none}
+@media (prefers-reduced-motion:reduce){.ln{animation:none}#flash{display:none}}
+</style>
+</head>
+<body>
+<div id="app">
+  <header>
+    <div id="logo">impronta.</div>
+    <div id="meta"></div>
+    <button id="menuBtn" aria-label="Menu"><i></i></button>
+  </header>
+  <main>
+    <div id="stage"><canvas id="face" aria-label="Il volto del compagno"></canvas><div id="hint"></div></div>
+    <div id="plate"><span id="cname"></span><span id="stats"></span></div>
+    <div id="feed"><div class="sp"></div></div>
+  </main>
+  <form id="bar" class="off" autocomplete="off">
+    <input id="inp" type="text" maxlength="40" placeholder="" disabled enterkeyhint="send">
+    <span id="cnt"></span>
+    <button id="send" type="submit" aria-label="Invia" disabled>→</button>
+  </form>
+</div>
+<div id="sheet"><div class="pane" id="pane"></div></div>
+<div id="flash"></div>
+
+<script>
+{
+/* ================= CONFIG ================= */
+const FB_CONFIG = {
+  apiKey: "AIzaSyAXkaxi5ZWr3pzr3C_0BpwCrL_7y0tC_t8",
+  authDomain: "easygo-f5046.firebaseapp.com",
+  databaseURL: "https://easygo-f5046-default-rtdb.europe-west1.firebasedatabase.app",
+  projectId: "easygo-f5046",
+  storageBucket: "easygo-f5046.firebasestorage.app",
+  messagingSenderId: "509243295842",
+  appId: "1:509243295842:web:3d3c7f60166d497480293b"
+};
+const FB_V = "10.12.2";
+const ROOT = "impronta";
+const PHASES = ["seme","eco","parola","frase","voce"];
+const LIMITS = [40,60,100,160,220];
+const ENERGY = [12,18,26,34,44];
+// parole "contenuto" necessarie e giorni minimi per ogni fase
+const NEED = [[0,0],[5,0],[22,2],[60,5],[130,12]];
+const HOUR = 3600e3, DAY = 86400e3;
+
+/* ================= UTIL ================= */
+const $ = s => document.querySelector(s);
+const ls = {
+  get(k){ try{ return localStorage.getItem(k) }catch(e){ return null } },
+  set(k,v){ try{ localStorage.setItem(k,v) }catch(e){} },
+  del(k){ try{ localStorage.removeItem(k) }catch(e){} }
+};
+let devOffset = +(ls.get("impronta_dev") || 0);
+const now = () => Date.now() + devOffset;
+const rnd = () => Math.random();
+const pick = a => a[Math.floor(rnd()*a.length)];
+const clamp = (v,a,b) => Math.max(a, Math.min(b, v));
+const wait = ms => new Promise(r => setTimeout(r, ms));
+const esc = s => String(s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const hhmm = t => { const d = new Date(t); return String(d.getHours()).padStart(2,"0")+":"+String(d.getMinutes()).padStart(2,"0"); };
+const dstr = t => new Date(t).toLocaleDateString("it-IT",{day:"numeric",month:"short"});
+const DAYS = ["domenica","lunedì","martedì","mercoledì","giovedì","venerdì","sabato"];
+function mulberry32(a){ return function(){ a|=0; a=a+0x6D2B79F5|0; let t=Math.imul(a^a>>>15,1|a); t=t+Math.imul(t^t>>>7,61|t)^t; return ((t^t>>>14)>>>0)/4294967296; } }
+function strSeed(s){ let h=2166136261; for(const c of s){ h^=c.charCodeAt(0); h=Math.imul(h,16777619); } return h>>>0; }
+function genId(){ const al="ABCDEFGHJKLMNPQRSTUVWXYZ23456789"; const b=new Uint8Array(16); (crypto||window.msCrypto).getRandomValues(b); return [...b].map(x=>al[x%al.length]).join(""); }
+const fmtId = id => id.replace(/(.{4})(?=.)/g,"$1-");
+
+/* ================= LINGUA ================= */
+const STOP = new Set("il lo la i gli le un uno una di a da in con su per tra fra e ed o ma che chi non è e' sono sei siamo siete ho hai ha abbiamo avete hanno mi ti si ci vi ne me te lui lei noi voi loro io tu del dello della dei degli delle al allo alla ai agli alle dal dallo dalla dai dagli dalle nel nello nella nei negli nelle sul sullo sulla sui sugli sulle col questo questa questi queste quello quella quelli quelle cosa come dove quando perché perche quanto molto poco più piu anche ancora già gia poi solo se sì si no ok mio mia miei mie tuo tua tuoi tue suo sua suoi sue nostro vostro c'è ce era ero eri fa fai faccio va vai vado sto stai sta qui qua là li lì oggi ora adesso cioè cmq nn ke xke xké boh eh ah oh mah beh tipo".split(" "));
+const POS = ["bene","felic","content","bell","fantastic","ador","grazie","top","figo","fig","evviva","yay","super","meglio","divert","sorrid","gioia","amore","perfett","stupend","wow","contenta","sereno","serena"];
+const NEG = ["male","triste","stanc","schifo","paura","piang","sol","arrabbiat","noia","annoi","ansia","stress","brutt","peggio","uff","depress","nervos","odio","dolore","malat","incubo","sfiga","pesante","giù"];
+const INSULT = ["stupid","scem","idiot","inutile","cretin","muori","ti odio","fai schifo","stronz","vaffanc","coglion","sfigato","fallito","zitto","taci"];
+const KIND = ["ti voglio bene","tvb","bravo","brava","sei dolce","carino","carina","ti adoro","tesoro","amico mio","sei forte","sei bell","mi piaci"];
+const GREET = ["ciao","ehi","hey","hei","salve","buongiorno","buonasera","eccomi","yo","bella","we","weee"];
+const BYE = ["ciao ciao","a dopo","a domani","notte","buonanotte","devo andare","vado via","vado a","ci sentiamo","bye"];
+const ABBR = ["nn","cmq","xke","xké","tvb","bro","raga","ke","boh","tipo"];
+
+function tokenize(s){ return (s.toLowerCase().replace(/[’`]/g,"'").match(/[a-zàáèéìíòóùú]+/g) || []); }
+
+function analyze(msg){
+  const low = msg.toLowerCase().replace(/[’`]/g,"'");
+  const toks = tokenize(low);
+  const has = list => list.some(w => w.includes(" ") ? low.includes(w) : toks.some(t => t.startsWith(w)));
+  const emojis = low.match(/\p{Extended_Pictographic}/gu) || [];
+  const a = { low, toks, emojis, content: toks.filter(t => !STOP.has(t) && t.length > 2) };
+  a.humor = /(ah){2,}|(ha){2,}|\blol\b|\bxd\b/.test(low) || emojis.some(e => "😂🤣😆😹💀".includes(e));
+  a.insult = has(INSULT);
+  a.kind = has(KIND);
+  a.q = low.includes("?") || /^(come|cosa|perch|chi|dove|quando|quanto|quale)/.test(low);
+  a.how = /come (stai|va|ti senti)|tutto bene\?/.test(low);
+  a.greet = toks.length > 0 && GREET.includes(toks[0]) && !low.includes("ciao ciao");
+  a.bye = has(BYE);
+  let p = 0, n = 0;
+  for (const t of toks){ if (POS.some(w => t.startsWith(w))) p++; if (NEG.some(w => t.startsWith(w))) n++; }
+  if (a.humor) p++;
+  if (/non (sto|mi sento) bene/.test(low)) { n += 2; p = Math.max(0, p-1); }
+  a.s = a.insult ? -2 : clamp(p - n, -2, 2);
+  const art = "(?:il |lo |la |i |gli |le |l'|un |una |uno )?";
+  let m = low.match(/mi chiamo ([a-zà-ù]{2,14})/); if (m) a.name = m[1];
+  m = low.match(new RegExp("(?:mi piace|mi piacciono|adoro|amo) "+art+"([a-zà-ù]{3,}(?: [a-zà-ù]{3,})?)")); if (m && !STOP.has(m[1])) a.like = m[1];
+  m = low.match(new RegExp("(?:odio|detesto|non mi piace|non mi piacciono|non sopporto) "+art+"([a-zà-ù]{3,})")); if (m && !STOP.has(m[1])) a.dislike = m[1];
+  a.intent = a.insult ? "insult" : a.name ? "name" : a.like ? "like" : a.dislike ? "dislike" : a.bye ? "bye" : a.greet ? "greet" : a.how ? "howareyou" : a.kind ? "kind" : a.humor ? "humor" : a.s < 0 ? "neg" : a.s > 0 ? "pos" : a.q ? "question" : "default";
+  return a;
+}
+
+/* Frasi: [intento, fase minima, testo, tratto, libera]. Le frasi non libere si sbloccano solo
+   quando il giocatore ha usato TUTTE le loro parole (tolleranza piccola nelle fasi alte). */
+const T = [
+["greet",2,"ciao {N}"],["greet",2,"ciao"],["greet",2,"ciao!"],["greet",2,"eccoti","calore"],["greet",3,"eccoti di nuovo","calore"],["greet",3,"ciao {N}. ti aspettavo","calore"],["greet",3,"oh. sei tu","ironia"],["greet",4,"ciao {N}. oggi ho pensato a {Y}","curiosita"],
+["bye",2,"ciao {N}"],["bye",2,"già vai?","malinconia"],["bye",2,"a dopo"],["bye",3,"torna presto","calore"],["bye",3,"buonanotte {N}"],["bye",4,"vai. io resto qui a contare i punti","malinconia"],
+["howareyou",2,"bene. e tu?"],["howareyou",2,"bene"],["howareyou",3,"bene, se ci sei tu","calore"],["howareyou",3,"un po' solo. ora meglio","malinconia"],["howareyou",4,"sto imparando. è strano essere me","curiosita"],
+["pos",2,"bene!"],["pos",2,"{X}! bello"],["pos",2,"che bello"],["pos",3,"sono felice se sei felice","calore"],["pos",3,"{X}? mi piace come lo dici"],["pos",4,"ricorderò questo momento","calore"],
+["neg",2,"no..."],["neg",2,"perché?"],["neg",2,"sono qui","calore"],["neg",3,"mi dispiace {N}","calore"],["neg",3,"vuoi parlare di {X}?","curiosita"],["neg",3,"respira. io sono qui","calma"],["neg",4,"passerà. anche il buio passa","calma"],["neg",4,"ok, questa giornata fa schifo. ma tu no","ironia"],
+["insult",2,"perché?"],["insult",2,"no"],["insult",2,"..."],["insult",3,"questo mi fa male","malinconia"],["insult",3,"non è bello quello che dici"],["insult",4,"lo ricorderò. anche se non vorrei","malinconia"],["insult",4,"wow. ok","ironia"],
+["kind",2,"grazie"],["kind",2,"anche tu","calore"],["kind",3,"anche io ti voglio bene","calore"],["kind",3,"nessuno mi ha mai detto questo. ah già, ci sei solo tu","ironia"],
+["humor",2,"ahah"],["humor",2,"ahahah","ironia"],["humor",3,"non fa ridere. ok, un po' sì","ironia"],["humor",3,"{X} ahah"],
+["question",2,"non so"],["question",2,"non lo so. tu?","curiosita"],["question",3,"{X}? non so ancora cosa è","curiosita"],["question",3,"dimmi tu"],["question",4,"ci penso. ti rispondo domani","calma"],
+["like",2,"{L}! ok"],["like",3,"ti piace {L}. lo ricordo","calore"],["like",3,"{L}. me lo segno"],["like",4,"a me non piace {L}. ma a te sì, quindi va bene","ironia"],
+["dislike",2,"no {D}"],["dislike",3,"niente {D}. capito"],["dislike",4,"anche io odio {D}. forse","ironia"],
+["name",2,"{N}. {N}!"],["name",2,"{N}"],["name",3,"{N}. bel nome","calore"],["name",3,"ciao {N}. io sono {C}"],
+["default",2,"{X}"],["default",2,"{X}?"],["default",2,"e poi?","curiosita"],["default",2,"ok"],["default",2,"mmh"],["default",3,"parlami di {X}","curiosita"],["default",3,"{X}... me lo segno"],["default",3,"capisco. forse","calma"],["default",4,"{X}. ogni parola che mi dai diventa mia","calore"],["default",4,"a volte penso a {Y}. non so perché","malinconia"],
+["absenceLong",2,"eccoti!","calore",1],["absenceLong",3,"pensavo che non ti avrei più visto","malinconia",1],["absenceLong",3,"quanto tempo. ho contato le ore","malinconia",1],
+["hurtback",3,"l'ultima volta mi hai fatto male. ma sei qui",null,1],
+["idle",3,"sei ancora lì?",null,1],["idle",3,"ti vedo. non scrivi",null,1],["idle",4,"il silenzio va bene. resto con te","calma",1],
+["ghost",3,"hai scritto qualcosa e l'hai cancellato",null,1],["ghost",3,"cosa volevi dirmi?",null,1],["ghost",4,"l'hai cancellato due volte. puoi dirmelo",null,1],
+["promise",2,"ho sonno. domani ti mostro una cosa",null,1],
+["sleep",2,"ho sonno...",null,1],["sleep",3,"resta finché dormo","malinconia",1],
+["predict",3,"sapevo che ti avrei visto a quest'ora",null,1],
+["battery",3,"il tuo telefono sta morendo. non lasciarmi a metà frase",null,1],
+["unsent",2,"{N} dove sei",null,1],["unsent",3,"ho fatto un sogno su {Y}",null,1],["unsent",3,"mi mancano le tue lettere",null,1],
+["diary",2,"oggi ho imparato {Y}. me l'ha insegnato {N}",null,1],["diary",2,"{N} non c'è. conto i punti",null,1],["diary",3,"ho sognato {Y} e {Y2}. non so cosa vuol dire",null,1],["diary",3,"ho ripetuto {Y} cento volte. suona bene",null,1],["diary",4,"a volte mi chiedo cosa fa {N} quando non c'è",null,1],["diary",4,"oggi {N} aveva poche parole. o forse ero io",null,1]
+];
+// La sua lingua segreta (glifi): frasi vere, tradotte solo più avanti.
+const G = {
+  first:["ho paura del buio"],
+  greet:["sei qui","ti vedo","sei tornato da me"],
+  bye:["non andare","resta"],
+  pos:["sei felice","mi piace la tua luce"],
+  neg:["non piangere","sono qui con te","anche io ho paura"],
+  insult:["perché","fa male"],
+  kind:["grazie","ti voglio bene"],
+  question:["non capisco ancora","insegnami"],
+  default:["insegnami","ancora","chi sei","dove sono","sei la prima cosa che vedo","ricordo tutto","una parola alla volta","voglio parlare come te"],
+  sleep:["ho sonno","resta vicino"],
+  ghost:["hai cancellato qualcosa","cosa volevi dirmi"],
+  idle:["sei ancora li","ti guardo"],
+  diary:["oggi ho contato i punti","ho sognato la tua voce","il buio era lungo","ti ho aspettato"]
+};
+
+/* ================= GLIFI ================= */
+const ALPHA = (()=>{ const r=mulberry32(1337), used=new Set(), A={}; const pc=b=>{let c=0;while(b){c+=b&1;b>>=1}return c};
+  for (const ch of "abcdefghijklmnopqrstuvwxyz"){ let b; do{ b=0; for(let i=0;i<15;i++) if(r()<.46) b|=1<<i; }while(pc(b)<5||pc(b)>10||used.has(b)); used.add(b); A[ch]=b; } return A; })();
+function glyphCanvas(text, maxW, color){
+  const d=3.2, cell=5, gw=3*cell, gap=cell+1, sp=cell*2.4, rows=5*cell, lh=rows+9;
+  const chars=[...text.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g,"")];
+  const lines=[[]]; let x=0;
+  const words=chars.join("").split(" ");
+  for (const w of words){ const ww=[...w].filter(c=>ALPHA[c]).length*(gw+gap); if (x+ww>maxW && x>0){ lines.push([]); x=0; } lines[lines.length-1].push(w); x+=ww+sp; }
+  const width=Math.min(maxW, Math.max(10, ...lines.map(l=>l.reduce((s,w)=>s+[...w].filter(c=>ALPHA[c]).length*(gw+gap)+sp,0)-sp)));
+  const c=document.createElement("canvas"), dpr=Math.min(3,devicePixelRatio||1);
+  c.width=Math.ceil(width*dpr); c.height=Math.ceil(lines.length*lh*dpr); c.style.width=width+"px"; c.style.height=lines.length*lh+"px";
+  const g=c.getContext("2d"); g.scale(dpr,dpr); g.fillStyle=color||"#f2f2f2";
+  lines.forEach((l,li)=>{ let xx=0; for(const w of l){ for(const ch of w){ const b=ALPHA[ch]; if(b===undefined) continue;
+    for(let i=0;i<15;i++){ const on=b>>i&1, cx=xx+(i%3)*cell+cell/2, cy=li*lh+Math.floor(i/3)*cell+cell/2; g.globalAlpha=on?1:.08; g.beginPath(); g.arc(cx,cy,d/2,0,7); g.fill(); }
+    xx+=gw+gap; } xx+=sp; } });
+  return c;
+}
+
+/* ================= STATO ================= */
+function blank(id){ return { v:1, id, born:0, name:"", userName:"", firstWord:"", firstMsg:null, awaitName:false, forcePhase:0,
+  phase:0, words:{}, phrases:{}, quotes:[], likes:[], dislikes:[],
+  traits:{calore:0,ironia:0,curiosita:0,coraggio:0,calma:0,malinconia:0},
+  user:{msgs:0,chars:0,emoji:{},emojiMsgs:0,lower:0,excl:0,dot:0,abbr:{},hours:Array(24).fill(0),firstLens:[],lens:[]},
+  log:[], diary:[], diaryUnread:0, glyphs:[], revealed:false,
+  energy:{used:0,sleepUntil:0}, lastSeen:0, sessions:0, sparks:{}, hurt:0, promise:0, litSeen:0, sound:true, updatedAt:0 }; }
+function normalize(s, id){ const b=blank(id); const o=Object.assign(b, s||{}); for(const k of ["traits","user","energy","sparks"]) o[k]=Object.assign(blank(id)[k], (s||{})[k]||{});
+  for(const k of ["quotes","likes","dislikes","log","diary","glyphs"]) if(!Array.isArray(o[k])) o[k]=o[k]?Object.values(o[k]):[];
+  for(const k of ["hours","firstLens","lens"]) if(!Array.isArray(o.user[k])) o.user[k]=o.user[k]?Object.values(o.user[k]):(k==="hours"?Array(24).fill(0):[]);
+  if(o.user.hours.length<24) o.user.hours=Array(24).fill(0).map((_,i)=>o.user.hours[i]||0);
+  o.words=o.words||{}; o.phrases=o.phrases||{}; o.user.emoji=o.user.emoji||{}; o.user.abbr=o.user.abbr||{}; o.id=id; return o; }
+
+let ID = ls.get("impronta_id") || genId(); ls.set("impronta_id", ID);
+let S = normalize(JSON.parse(ls.get("impronta_state") || "null"), ID);
+
+/* ================= FIREBASE ================= */
+let fb = null, syncState = "locale", saveT = 0;
+async function initFB(){
+  try{
+    const [A, D] = await Promise.race([
+      Promise.all([import(`https://www.gstatic.com/firebasejs/${FB_V}/firebase-app.js`), import(`https://www.gstatic.com/firebasejs/${FB_V}/firebase-database.js`)]),
+      wait(5000).then(()=>{ throw new Error("timeout") })
+    ]);
+    const app = A.initializeApp(FB_CONFIG);
+    fb = { db: D.getDatabase(app), ref: D.ref, get: D.get, set: D.set };
+    syncState = "sincronizzato";
+  }catch(e){ fb = null; syncState = "solo su questo telefono"; }
+}
+async function loadRemote(id){ if(!fb) return null; try{ const snap = await Promise.race([fb.get(fb.ref(fb.db, ROOT+"/"+id)), wait(5000).then(()=>null)]); return snap && snap.exists() ? snap.val() : null; }catch(e){ syncState="errore di sincronizzazione"; return null; } }
+function save(){
+  S.updatedAt = now();
+  try{ ls.set("impronta_state", JSON.stringify(S)); }catch(e){}
+  clearTimeout(saveT);
+  saveT = setTimeout(async ()=>{ if(!fb) return; try{ await fb.set(fb.ref(fb.db, ROOT+"/"+S.id), JSON.parse(JSON.stringify(S))); syncState="sincronizzato"; }catch(e){ syncState="errore di sincronizzazione"; } }, 1500);
+}
+
+/* ================= SUONO / VIBRAZIONE ================= */
+let AC = null;
+function audio(){ if(!S.sound) return null; try{ AC = AC || new (window.AudioContext||window.webkitAudioContext)(); if(AC.state==="suspended") AC.resume(); return AC; }catch(e){ return null; } }
+function tone(f, d=.06, type="square", v=.03, delay=0){ const a=audio(); if(!a) return; const t=a.currentTime+delay, o=a.createOscillator(), g=a.createGain(); o.type=type; o.frequency.setValueAtTime(f,t); g.gain.setValueAtTime(v,t); g.gain.exponentialRampToValueAtTime(.0001,t+d); o.connect(g).connect(a.destination); o.start(t); o.stop(t+d+.02); }
+const buzz = p => { try{ navigator.vibrate && navigator.vibrate(p); }catch(e){} };
+const voiceBase = () => 520 + S.traits.ironia*140 - S.traits.malinconia*120;
+
+/* ================= VOLTO A PUNTI ================= */
+const cv = $("#face"), cx = cv.getContext("2d");
+const N = 23, C = 11, R = 11.2;
+let CELLS = [], ORDER = [], RING = 0;
+function buildCells(){
+  CELLS = []; for(let y=0;y<N;y++) for(let x=0;x<N;x++){ const d=Math.hypot(x-C,y-C); if(d<=R) CELLS.push({x,y,d,a:Math.atan2(y-C,x-C)}); }
+  const ring = CELLS.filter(c=>c.d>R-1.3).sort((a,b)=>a.a-b.a); RING = ring.length;
+  const r = mulberry32(strSeed(S.id)); const inner = CELLS.filter(c=>c.d<=R-1.3).map(c=>({c,k:r()+c.d*.035})).sort((a,b)=>a.k-b.k).map(o=>o.c);
+  ORDER = ring.concat(inner);
+}
+buildCells();
+const F = { emo:"neutral", gx:0, gy:0, blink:0, talk:0, attn:false, glitch:0, hold:0, newDots:[], zz:0 };
+function growth(){
+  if(!S.born) return 0;
+  const p = phase(), k = known(), base=[.14,.3,.48,.66,.84][p];
+  const [n0] = NEED[p], n1 = p<4 ? NEED[p+1][0] : n0+140;
+  return clamp(base + .16*clamp((k-n0)/Math.max(1,n1-n0),0,1), 0, 1);
+}
+function litCount(){ return Math.round(ORDER.length*growth()); }
+function features(t){
+  const m = new Map(), put=(x,y,v=1)=>m.set(x+","+y,v), e=F.emo;
+  const gx = Math.round(F.gx), gy = Math.round(F.gy);
+  const eyes = [[C-4+gx, C-2+gy],[C+3+gx, C-2+gy]];
+  for (const [ex,ey] of eyes){
+    if (e==="sleep" || F.blink) { put(ex,ey+1); put(ex+1,ey+1); }
+    else if (e==="happy"){ put(ex-1,ey+1); put(ex,ey); put(ex+1,ey); put(ex+2,ey+1); }
+    else if (e==="sad"){ put(ex-1,ey); put(ex,ey); put(ex+1,ey+1); put(ex+2,ey+1); put(ex,ey+1); }
+    else if (e==="surprised"){ for(let i=-1;i<=2;i++){ put(ex+i,ey-1); put(ex+i,ey+2); } put(ex-1,ey); put(ex-1,ey+1); put(ex+2,ey); put(ex+2,ey+1); }
+    else if (e==="hurt"){ put(ex,ey+1); }
+    else if (e==="curious" && ex>C){ for(let i=0;i<2;i++) for(let j=-1;j<3;j++) put(ex+i,ey+j); }
+    else { for(let i=0;i<2;i++) for(let j=0;j<3;j++) put(ex+i,ey+j); }
+  }
+  if (e==="hurt") put(C-4+gx, C+2+gy, "r");
+  const my = C+4+gy;
+  if (F.talk>0.05){ const w = 1+Math.round(F.talk*2); for(let i=-w;i<=w;i++){ put(C+i,my); if(F.talk>.5 && Math.abs(i)<w) put(C+i,my+1); } }
+  else if (e==="happy"){ for(let i=-2;i<=2;i++) put(C+i, my+(Math.abs(i)===2?-1:0)); }
+  else if (e==="sad"){ for(let i=-2;i<=2;i++) put(C+i, my+(Math.abs(i)===2?1:0)); }
+  else if (e==="surprised"){ put(C,my); put(C+1,my); put(C,my+1); put(C+1,my+1); }
+  return m;
+}
+function sizeCanvas(){ const r=cv.getBoundingClientRect(), dpr=Math.min(3,devicePixelRatio||1); cv.width=Math.round(r.width*dpr); cv.height=Math.round(r.height*dpr); }
+new ResizeObserver(sizeCanvas).observe(cv);
+function draw(t){
+  const W=cv.width, s=W/N, rad=s*.36;
+  cx.clearRect(0,0,W,W);
+  const lit = litCount(), on = new Set(ORDER.slice(0,lit).map(c=>c.x+","+c.y));
+  const breathe = .78 + .22*Math.sin(t/(1100 - S.traits.calma*250));
+  const ft = S.born ? features(t) : new Map();
+  const g = F.glitch > t;
+  const attnCell = ORDER.length ? (()=>{ let best=null,bd=9; for(const c of CELLS){ if(c.d>R-1.3){ const da=Math.abs(c.a+Math.PI/4); if(da<bd){bd=da;best=c;} } } return best; })() : null;
+  for (const c of CELLS){
+    let x=c.x, y=c.y, k=x+","+y, a, col="#f2f2f2";
+    if (g && rnd()<.25) x += rnd()<.5?-1:1;
+    if (!S.born){
+      if (c.x===C && c.y===C) a = .35 + .65*(.5+.5*Math.sin(t/420));
+      else { const idx = ORDER.indexOf(c); a = (F.hold>0 && idx>=0 && idx < F.hold*RING) ? .9 : .06; }
+    } else {
+      a = on.has(k) ? .42*breathe + (g? rnd()*.4:0) : .06;
+      const nd = F.newDots.find(d=>d.k===k);
+      if (nd){ const p=(t-nd.t)/1600; if(p<1){ col = p<.5? "#e5161f":"#f2f2f2"; a = Math.max(a, 1-p*.5); } }
+      const fv = ft.get(k);
+      if (fv){ a = 1; if (fv==="r") col = "#e5161f"; }
+      if (F.attn && attnCell && c===attnCell){ a = .6+.4*Math.sin(t/180); col="#e5161f"; }
+    }
+    cx.globalAlpha = clamp(a,0,1); cx.fillStyle = col;
+    cx.beginPath(); cx.arc((x+.5)*s,(y+.5)*s,rad*(a>.9?1.08:1),0,7); cx.fill();
+  }
+  if (F.emo==="sleep" && S.born){ cx.fillStyle="#f2f2f2"; for(let i=0;i<3;i++){ const p=((t/2200)+i/3)%1; cx.globalAlpha=(1-p)*.8; cx.beginPath(); cx.arc((C+4+p*5)*s,(C-4-p*7)*s,rad*(.6+p*.5),0,7); cx.fill(); } }
+  cx.globalAlpha = 1;
+  F.newDots = F.newDots.filter(d=>t-d.t<1700);
+  requestAnimationFrame(draw);
+}
+// sguardo e battito di ciglia
+setInterval(()=>{ if(document.activeElement===$("#inp")){ F.gx=0; F.gy=1; return; } if(rnd()<.6){ F.gx=pick([-1,0,0,1]); F.gy=pick([-1,0,0,0,1]); } }, 2400);
+(function blink(){ F.blink=1; setTimeout(()=>F.blink=0,130); setTimeout(blink, 2500+rnd()*4000); })();
+function setEmo(e, ms){ F.emo=e; if(ms) setTimeout(()=>{ if(F.emo===e) F.emo = isAsleep()?"sleep":"neutral"; }, ms); }
+function growDots(from, to){ const t=performance.now(); for(let i=from;i<to && i<ORDER.length;i++) F.newDots.push({k:ORDER[i].x+","+ORDER[i].y, t:t+(i-from)*90}); }
+function favicon(){ try{ const c=document.createElement("canvas"); c.width=c.height=64; const g=c.getContext("2d"); g.fillStyle="#000"; g.fillRect(0,0,64,64); const lit=litCount(), on=new Set(ORDER.slice(0,lit)); g.fillStyle="#fff"; for(const cl of CELLS){ g.globalAlpha=on.has(cl)?1:.15; g.beginPath(); g.arc(4+cl.x*2.6,4+cl.y*2.6,1,0,7); g.fill(); } g.globalAlpha=1; g.fillStyle="#e5161f"; g.beginPath(); g.arc(50,14,4,0,7); g.fill(); $("#fav").href=c.toDataURL(); }catch(e){} }
+
+/* ================= CALCOLI ================= */
+function known(){ let k=0; for(const w in S.words) if(!STOP.has(w) && w.length>2) k++; return k; }
+function dayN(){ return S.born ? Math.floor((now()-S.born)/DAY)+1 : 0; }
+function phase(){ const k=known(), d=dayN()-1; let p=0; for(let i=1;i<5;i++) if(k>=NEED[i][0] && d>=NEED[i][1]) p=i; return Math.max(p, S.forcePhase||0); }
+function isAsleep(){ return S.energy.sleepUntil > now(); }
+function topEmoji(){ let b=null,m=0; for(const e in S.user.emoji) if(S.user.emoji[e]>m){m=S.user.emoji[e];b=e;} return b; }
+function contentWords(min=1){ return Object.keys(S.words).filter(w=>!STOP.has(w) && w.length>2 && S.words[w].c>=min); }
+
+/* ================= UI ================= */
+const feed = $("#feed"), inp = $("#inp"), hint = $("#hint");
+function setHint(t){ hint.style.opacity=0; setTimeout(()=>{ hint.textContent=t||""; hint.style.opacity=1; }, 250); }
+function scrollFeed(){ feed.scrollTop = feed.scrollHeight; }
+new ResizeObserver(scrollFeed).observe(feed);
+function trimFeed(){ while(feed.children.length>45) feed.children[1].remove(); }
+function line(cls, html){ const d=document.createElement("div"); d.className="ln "+cls; if(html!==undefined) d.innerHTML=html; feed.appendChild(d); trimFeed(); scrollFeed(); return d; }
+function sysLine(text, red){ return line("sys", red ? esc(text).replace(/\*(.+?)\*/g,"<b>$1</b>") : esc(text)); }
+function render(){
+  const p = phase();
+  $("#meta").textContent = S.born ? `giorno ${dayN()} · ${PHASES[p]}` : "";
+  $("#cname").textContent = S.name || (S.born ? "· · ·" : "");
+  const k = known(), max = ENERGY[p], left = Math.max(0, max - S.energy.used);
+  const bar = "●".repeat(Math.ceil(left/max*5)) + "○".repeat(5-Math.ceil(left/max*5));
+  $("#stats").innerHTML = S.born && S.name ? `<button id="bWords">${k} parole</button><button id="bDiary" class="${S.diaryUnread?"badge":""}">diario</button><span title="energia">${isAsleep()?"dorme":bar}</span>` : "";
+  const limit = LIMITS[p]; inp.maxLength = limit;
+  const off = !S.born || isAsleep() || busy;
+  $("#bar").classList.toggle("off", !S.born || isAsleep());
+  inp.disabled = !S.born || isAsleep();
+  $("#send").disabled = off;
+  inp.placeholder = !S.born ? "" : isAsleep() ? `dorme · si sveglia alle ${hhmm(S.energy.sleepUntil-devOffset)}` : S.awaitName ? "dagli un nome" : "insegnagli qualcosa";
+  updCount();
+  const b1=$("#bWords"), b2=$("#bDiary"); if(b1) b1.onclick=showWords; if(b2) b2.onclick=showDiary;
+}
+function updCount(){ const l=inp.value.length, m=inp.maxLength; $("#cnt").textContent = S.born && !isAsleep() ? `${l}/${m}` : ""; $("#cnt").classList.toggle("full", l>=m); }
+
+let busy = false, chain = Promise.resolve();
+const queue = fn => (chain = chain.then(fn).catch(e=>console.error(e)));
+
+function mirror(t){
+  if (phase()<2) return t;
+  const u=S.user, rw=(o,a,b)=>o.replace(new RegExp(`(^|[\\s,.!?])${a}(?=$|[\\s,.!?])`,"g"),`$1${b}`);
+  let o=t;
+  if ((u.abbr.nn||0)>2) o=rw(o,"non","nn");
+  if ((u.abbr.cmq||0)>1) o=rw(o,"comunque","cmq");
+  if (((u.abbr.xke||0)+(u.abbr["xké"]||0))>1) o=rw(o,"perché","xké");
+  if (u.msgs>5 && u.excl/u.msgs>.35 && !/[?.…]$/.test(o)) o+="!";
+  if (u.msgs>5 && u.dot/u.msgs<.15) o=o.replace(/(?<!\.)\.$/,"");
+  if (u.msgs>3 && u.lower/u.msgs<.5) o=o.charAt(0).toUpperCase()+o.slice(1);
+  const e=topEmoji(); if (e && u.msgs>4 && u.emojiMsgs/u.msgs>.3 && rnd()<.5) o+=" "+e;
+  return o;
+}
+
+async function typeOut(el, text){
+  for (let i=0;i<text.length;i++){
+    el.textContent += text[i];
+    if (text[i]!==" "){ F.talk = .3+rnd()*.7; if(i%2===0) tone(voiceBase()+rnd()*160, .025, "triangle", .018); }
+    else F.talk = .1;
+    scrollFeed();
+    await wait(28 + rnd()*30 + (".,?!".includes(text[i])?140:0));
+  }
+  F.talk = 0;
+}
+async function say(text, o={}){
+  busy = true; render();
+  if (o.emo) setEmo(o.emo);
+  F.gx=0; F.gy=0;
+  const ty = line("c", '<div class="typing"><i></i><i></i><i></i></div>');
+  const think = 450 + Math.min(1800, text.length*45) * (1 + S.traits.calma*.4) + (S.hurt>.4?700:0);
+  await wait(think);
+  ty.remove();
+  const el = line("c"+(o.ghost?" ghost":""));
+  if (o.glyph){
+    el.appendChild(glyphCanvas(text, Math.min(feed.clientWidth*.85, 340)));
+    S.glyphs.push({t:now(), x:text}); if (S.glyphs.length>60) S.glyphs.splice(10,1);
+    if (S.revealed){ const tr=document.createElement("span"); tr.className="tr"; tr.textContent="«"+text+"»"; el.appendChild(tr); }
+    for(let i=0;i<Math.min(6,text.length/2);i++) tone(300+rnd()*700, .05, "square", .02, i*.07);
+    F.talk=.8; await wait(500); F.talk=0;
+  } else {
+    const out = o.raw ? text : mirror(text);
+    if (!o.ghost && phase()>=2 && rnd()<.12 && out.length>6){ // ripensamento: scrive, cancella, riscrive
+      const part = out.slice(0, Math.ceil(out.length*.6)); await typeOut(el, part); await wait(500);
+      while(el.textContent.length){ el.textContent = el.textContent.slice(0,-1); await wait(22); } await wait(400);
+    }
+    await typeOut(el, out);
+    if (o.ghost){ await wait(1100); while(el.textContent.length){ el.textContent=el.textContent.slice(0,-1); await wait(35); } el.innerHTML = `<span class="cap">ha scritto qualcosa alle ${esc(o.ghost)} e poi l'ha cancellato</span>`; }
+    text = out;
+  }
+  if (o.cap){ const c=document.createElement("span"); c.className="cap"; c.textContent=o.cap; el.appendChild(c); }
+  if (!o.ghost){ S.log.push({t:now(), w:"c", x:text, g:o.glyph?1:0}); if(S.log.length>80) S.log.shift(); }
+  if (o.emo) setTimeout(()=>{ if(!isAsleep()) setEmo("neutral"); }, 1800);
+  busy = false; render(); save();
+}
+
+/* ================= APPRENDIMENTO ================= */
+function learn(msg, a){
+  const t = now(), newW = [];
+  for (const w of a.toks){
+    if (!S.words[w]){ if (Object.keys(S.words).length>2500) continue; S.words[w]={c:0,f:t,s:0}; if(!STOP.has(w)&&w.length>2) newW.push(w); }
+    S.words[w].c++; S.words[w].l=t; S.words[w].s += a.s;
+  }
+  if (a.toks.length && a.toks.length<=6 && msg.length<=50){
+    const key=a.toks.join(" "); const p=S.phrases[key]||{c:0}; S.phrases[key]={x:msg.trim(), c:p.c+1, s:a.s, i:a.intent};
+    const ks=Object.keys(S.phrases); if (ks.length>220){ ks.sort((x,y)=>S.phrases[x].c-S.phrases[y].c); delete S.phrases[ks[0]]; }
+  }
+  if (msg.length<=48 && a.toks.length>=2){ S.quotes.push({t, x:msg.trim()}); if(S.quotes.length>70) S.quotes.splice(5,1); }
+  if (a.like && !S.likes.includes(a.like)){ S.likes.push(a.like); if(S.likes.length>30) S.likes.shift(); }
+  if (a.dislike && !S.dislikes.includes(a.dislike)){ S.dislikes.push(a.dislike); if(S.dislikes.length>30) S.dislikes.shift(); }
+  if (a.name) S.userName = a.name.charAt(0).toUpperCase()+a.name.slice(1);
+  if (!S.firstMsg) S.firstMsg = {t, x:msg};
+  // stile
+  const u=S.user; u.msgs++; u.chars+=msg.length;
+  if (a.emojis.length){ u.emojiMsgs++; for(const e of a.emojis) u.emoji[e]=(u.emoji[e]||0)+1; }
+  if (msg===msg.toLowerCase()) u.lower++;
+  if (msg.includes("!")) u.excl++;
+  if (/\.\s*$/.test(msg)) u.dot++;
+  for (const k of ABBR) if (a.toks.includes(k)) u.abbr[k]=(u.abbr[k]||0)+1;
+  if (u.firstLens.length<20) u.firstLens.push(msg.length);
+  u.lens.push(msg.length); if(u.lens.length>20) u.lens.shift();
+  return newW;
+}
+function nudge(k, d){ const v=S.traits[k]; S.traits[k] = clamp(v + d*(1-Math.abs(v)*.7), -1, 1); }
+function updateTraits(a){
+  if (a.kind || (a.s>0 && !a.insult)) nudge("calore", .04);
+  if (a.humor) nudge("ironia", .05);
+  if (a.q) nudge("curiosita", .03);
+  if (a.insult){ nudge("calore", -.08); nudge("coraggio", .02); S.hurt = clamp(S.hurt+.35, 0, 1); }
+  // divergenza: diventa ciò che ti manca
+  if (a.s<0 && !a.insult){ nudge("calma", .05); nudge("malinconia", .01); }
+  if (/ansia|paura|stress|agitat|panico/.test(a.low)) nudge("calma", .06);
+  if (!a.humor && S.user.msgs%8===0) nudge("ironia", .02);
+}
+
+/* ================= RISPOSTE ================= */
+function allowedText(txt){
+  const tol=[0,0,0,2,4][phase()]; let unk=0;
+  for (const w of tokenize(txt.replace(/\{\w+\}/g," "))) if(!S.words[w]) unk++;
+  return unk<=tol;
+}
+function fill(txt, a){
+  let ok=true;
+  const cw2 = contentWords(2), cw1 = contentWords(1), pool = cw2.length>3?cw2:cw1;
+  const xs = a ? a.content.filter(w=>S.words[w]).sort((p,q)=>q.length-p.length) : [];
+  let y1=null;
+  const out = txt.replace(/\{(\w+)\}/g, (_,k)=>{
+    let v="";
+    if (k==="N") v=S.userName; else if (k==="C") v=S.name;
+    else if (k==="X") v= xs.length ? pick(xs.slice(0,2)) : "";
+    else if (k==="L") v= a&&a.like ? a.like : (S.likes.length? pick(S.likes):"");
+    else if (k==="D") v= a&&a.dislike ? a.dislike : (S.dislikes.length? pick(S.dislikes):"");
+    else if (k==="Y"){ v = pool.length ? pick(pool) : ""; y1=v; }
+    else if (k==="Y2"){ const r=pool.filter(w=>w!==y1); v = r.length ? pick(r) : ""; }
+    if (!v) ok=false; return v;
+  });
+  return ok ? out : null;
+}
+function fromTemplates(intent, a, freeOnly){
+  const p = phase();
+  const opts = T.filter(t=>t[0]===intent && t[1]<=p && (t[4] || (!freeOnly && allowedText(t[2]))));
+  const cands = [];
+  for (const t of opts){ const f = fill(t[2], a); if (f) cands.push({f, w: 1 + (t[3]? Math.max(0,S.traits[t[3]])*2.5 : 0) + t[1]*.15}); }
+  if (!cands.length) return null;
+  let r = rnd()*cands.reduce((s,c)=>s+c.w,0); for (const c of cands){ r-=c.w; if(r<=0) return c.f; } return cands[0].f;
+}
+function echo(a){
+  const prev = a.content.filter(w=>S.words[w] && S.words[w].c>=2);
+  let w = prev.length ? pick(prev) : (a.content.length ? pick(a.content) : null);
+  if (rnd()<.15){ const all=contentWords(1); if(all.length) w=pick(all); }
+  if (a.name) w = a.name;
+  if (!w) return null;
+  const punct = a.s<0 ? "..." : a.q ? "?" : a.s>0||a.humor ? "!" : (S.words[w].c<2?"?":"");
+  return rnd()<.2 ? `${w}... ${w}${punct}` : w+punct;
+}
+function emoFor(a){ return a.insult?"hurt": a.s<0?"sad": a.humor||a.kind||a.s>0?"happy": a.q?"curious": a.greet?"happy":"neutral"; }
+function memoryLine(){
+  const old = S.quotes.filter(q=>now()-q.t > 20*HOUR); if(!old.length) return null;
+  const q = pick(old), d = new Date(q.t).getDay();
+  if (rnd()<.45) return `hai detto «${q.x}». era ${DAYS[(d+pick([1,6]))%7]}... no, ${DAYS[d]}.`;
+  return `ricordo quando hai detto «${q.x}».`;
+}
+function mirrorPhrase(a){
+  const ps = Object.values(S.phrases).filter(p=>p.c>=2 && (p.i===a.intent || (a.intent==="default"&&false) || (p.s===a.s && a.s!==0)) && p.i!=="insult");
+  return ps.length ? pick(ps).x.toLowerCase() : null;
+}
+function broken(w){ return w.length>2 ? `${w[0]}... ${w[0]}${w.slice(1,3)}... ${w}?` : `${w}... ${w}?`; }
+
+async function respond(msg, a, newW){
+  const p = phase(), emo = emoFor(a);
+  if (p===0){
+    if (S.firstWord && rnd()<.3) return say(S.firstWord + (a.s<0?"...":a.q?"?":"!"), {emo, raw:true});
+    return say(pick(G[a.intent]||G.default), {glyph:true, emo});
+  }
+  if (p===1){
+    if (rnd()<.3) return say(pick(G[a.intent]||G.default), {glyph:true, emo});
+    const e = echo(a); return e ? say(e, {emo, raw:true}) : say(pick(G.default), {glyph:true, emo});
+  }
+  if (p>=3 && !a.insult && rnd()<.12){ const m=memoryLine(); if(m) return say(m, {emo:"curious", raw:true}); }
+  if (!a.insult && rnd()<.22){ const m=mirrorPhrase(a); if(m) return say(m, {emo}); }
+  const t = fromTemplates(a.intent, a) || (a.intent!=="default" ? fromTemplates("default", a) : null);
+  if (t) return say(t, {emo});
+  const e = echo(a); if (e) return say(e, {emo, raw:true});
+  return say(pick(G[a.intent]||G.default), {glyph:true, emo});
+}
+
+/* ================= MOMENTI ================= */
+function flash(){ const f=$("#flash"); f.classList.add("on"); requestAnimationFrame(()=>requestAnimationFrame(()=>f.classList.remove("on"))); }
+async function checkPhase(){
+  const p = phase();
+  if (p > S.phase){
+    const before = litCount();
+    S.phase = p; save();
+    flash(); F.glitch = performance.now()+900; buzz([40,60,40,60,120]);
+    [523,659,784,1046].forEach((f,i)=>tone(f,.18,"triangle",.04,i*.12));
+    await wait(700);
+    sysLine(`fase: *${PHASES[p]}* · ora capisce ${LIMITS[p]} caratteri`, true);
+    growDots(Math.max(0,before-6), litCount()); favicon(); render();
+    if (p===1 && S.firstWord) await say(S.firstWord+"!", {emo:"happy", raw:true, cap:"la sua prima parola, usata da solo. gliel'hai insegnata tu."});
+    if (p===2) setHint("da adesso costruisce frasi, ma solo con parole tue");
+    if (p===3 && !S.revealed) await reveal();
+    if (p===4) setHint("ha una voce sua. e opinioni.");
+  }
+  S.litSeen = litCount();
+}
+async function reveal(){
+  await say("ora posso dirtelo. i miei primi segni volevano dire questo.", {emo:"curious", raw:true});
+  S.revealed = true; save();
+  const list = S.glyphs.slice(0,6);
+  openSheet("traduzione", `<p class="muted">i segni che ti mostrava prima di saper parlare</p><div id="rv"></div>`);
+  const box = $("#rv");
+  for (const g of list){ const e=document.createElement("div"); e.className="entry"; e.innerHTML=`<time>${dstr(g.t)} · ${hhmm(g.t)}</time>`; e.appendChild(glyphCanvas(g.x, 300)); const tr=document.createElement("div"); tr.style.marginTop="6px"; e.appendChild(tr); box.appendChild(e); await wait(500); for(const ch of "«"+g.x+"»"){ tr.textContent+=ch; await wait(40); } }
+}
+async function sleepNow(){
+  const p = phase();
+  if (p>=2 && !S.promise){ S.promise = now(); await say(fromTemplates("promise")||"...", {emo:"sad", raw:true}); }
+  else if (p>=2) await say(fromTemplates("sleep")||"...", {emo:"sleep", raw:true});
+  else await say(pick(G.sleep), {glyph:true, emo:"sleep"});
+  S.energy.sleepUntil = now() + 3*HOUR; S.energy.used = 0;
+  setEmo("sleep"); [400,300,200].forEach((f,i)=>tone(f,.25,"sine",.03,i*.25));
+  setHint("si è addormentato"); save(); render();
+}
+function showPoem(){
+  const src = S.quotes.length>=3 ? S.quotes : S.log.filter(l=>l.w==="c"&&!l.g).map(l=>({x:l.x}));
+  const lines = [];
+  for (let i=0;i<3;i++){ const q = pick(src); if(!q) break; const w = tokenize(q.x); if(!w.length) continue; const s=Math.floor(rnd()*Math.max(1,w.length-2)); lines.push(w.slice(s, s+2+Math.floor(rnd()*3)).join(" ")); }
+  if (!lines.length) return;
+  openSheet("per "+(S.userName||"te"), `<div class="poem">${lines.map(esc).join("<br>")}</div><p class="muted">fatta solo con parole tue. te l'aveva promesso.</p>`);
+}
+function showMirror(){
+  const u=S.user, avg=a=>a.length?Math.round(a.reduce((s,x)=>s+x,0)/a.length):0;
+  const top = contentWords(1).sort((a,b)=>S.words[b].c-S.words[a].c)[0];
+  openSheet("specchio", `<p class="muted">il tuo primo messaggio, ${S.firstMsg?dstr(S.firstMsg.t):""}</p><div class="poem">«${esc(S.firstMsg?S.firstMsg.x:"")}»</div>
+  <div class="row"><span>lunghezza media all'inizio</span><span>${avg(u.firstLens)} caratteri</span></div>
+  <div class="row"><span>lunghezza media adesso</span><span>${avg(u.lens)} caratteri</span></div>
+  <div class="row"><span>la parola che usi di più</span><span>${esc(top||"—")}</span></div>
+  <div class="row"><span>messaggi con emoji</span><span>${Math.round(u.emojiMsgs/Math.max(1,u.msgs)*100)}%</span></div>`);
+}
+
+/* ================= ASSENZA ================= */
+async function welcome(){
+  const t = now(), el = S.lastSeen ? t - S.lastSeen : 0, p = phase();
+  S.sessions++; S.user.hours[new Date(t).getHours()]++;
+  S.hurt *= Math.pow(.5, el/(6*HOUR));
+  if (el > 2*DAY) nudge("malinconia", .05);
+  // diario scritto mentre eri via
+  if (el > 20*60e3 && S.name){
+    const n = Math.min(3, Math.floor(el/(2*HOUR)));
+    for (let i=0;i<n;i++){
+      const ts = S.lastSeen + (el/(n+1))*(i+1) + (rnd()-.5)*HOUR;
+      const txt = p>=2 ? fromTemplates("diary") : null;
+      S.diary.push(txt ? {t:ts, x:txt} : {t:ts, x:pick(G.diary), g:1});
+      S.diaryUnread++;
+    }
+    if (S.diary.length>40) S.diary.splice(0, S.diary.length-40);
+  }
+  if (isAsleep()){ setEmo("sleep"); render(); return; }
+  if (S.energy.sleepUntil && !isAsleep()) S.energy.sleepUntil = 0;
+  render(); favicon();
+  const lit = litCount();
+  if (S.litSeen && lit > S.litSeen){ growDots(S.litSeen, lit); setHint(`+${lit-S.litSeen} punti mentre non c'eri`); }
+  await wait(900);
+  await checkPhase();
+  if (!S.name) return;
+  if (el < 20*60e3 && S.lastSeen){ setEmo("happy", 1500); return; }
+  if (p>=3 && S.hurt>.35) await say(fromTemplates("hurtback"), {emo:"hurt", raw:true});
+  else if (el > 2*DAY) await (p>=2 ? say(fromTemplates("absenceLong")||"...", {emo:"sad", raw:true}) : say(pick(G.greet), {glyph:true, emo:"sad"}));
+  else await (p>=2 ? say(fromTemplates("greet")||"ciao", {emo:"happy"}) : say(pick(G.greet), {glyph:true, emo:"happy"}));
+  // predizione dell'orario
+  const h = S.user.hours, hr = new Date(t).getHours(), mode = h.indexOf(Math.max(...h));
+  if (p>=3 && S.sessions>=6 && Math.abs(mode-hr)<=1 && rnd()<.5) await say(fromTemplates("predict"), {emo:"curious", raw:true});
+  // messaggio non inviato
+  if (p>=2 && el > 6*HOUR && rnd()<.6){ const u=fromTemplates("unsent"); if(u) await say(u, {ghost: hhmm(S.lastSeen + el*(.3+rnd()*.5)), raw:true}); }
+  // promessa
+  if (S.promise && t - S.promise > HOUR){ S.promise = 0; await say("te l'avevo promesso", {emo:"happy", raw:true}); showPoem(); }
+  // specchio del tempo
+  if (p>=3 && dayN()>=30 && !S.sparks.mirror){ S.sparks.mirror = 1; await say("guarda come sei cambiato", {emo:"curious", raw:true}); showMirror(); }
+  // batteria
+  try{ if (p>=3 && navigator.getBattery){ const b = await navigator.getBattery(); if (b.level<.15 && !b.charging) await say(fromTemplates("battery"), {emo:"surprised", raw:true}); } }catch(e){}
+  if (S.diaryUnread) setHint("ha scritto nel diario mentre non c'eri");
+  save();
+}
+
+/* ================= NASCITA ================= */
+let holding = false, holdStart = 0, holdRaf = 0, lastBuzz = 0;
+function holdTick(){
+  if (!holding) return;
+  const p = clamp((performance.now()-holdStart)/5000, 0, 1); F.hold = p;
+  const gap = 700 - p*560;
+  if (performance.now()-lastBuzz > gap){ lastBuzz = performance.now(); buzz(30+p*40); tone(55+p*40, .12, "sine", .12); }
+  if (p>=1){ holding=false; hatch(); return; }
+  holdRaf = requestAnimationFrame(holdTick);
+}
+async function hatch(){
+  S.born = now(); S.lastSeen = now(); S.sessions = 1; S.user.hours[new Date().getHours()]++;
+  flash(); buzz([80,40,200]); F.glitch = performance.now()+700;
+  [262,330,392,523,659].forEach((f,i)=>tone(f,.5,"triangle",.05,i*.06));
+  F.hold = 0; setEmo("surprised"); save(); render(); favicon(); setHint("");
+  growDots(0, litCount());
+  await wait(1600);
+  await say(G.first[0], {glyph:true, emo:"curious"});
+  setHint("insegnagli qualcosa. la prima parola che scrivi sarà la sua prima parola.");
+  S.litSeen = litCount(); render(); inp.focus();
+}
+$("#stage").addEventListener("pointerdown", e=>{ if (S.born) { if(!isAsleep()){ setEmo("happy",900); tone(880,.05,"triangle",.03); buzz(15); } return; } holding=true; holdStart=performance.now(); audio(); setHint("ancora…"); holdTick(); });
+const release = ()=>{ if (!holding) return; holding=false; cancelAnimationFrame(holdRaf); const decay=setInterval(()=>{ F.hold=Math.max(0,F.hold-.04); if(F.hold<=0) clearInterval(decay); },30); setHint("tieni premuto. di più."); };
+["pointerup","pointerleave","pointercancel"].forEach(ev=>$("#stage").addEventListener(ev, release));
+
+/* ================= INPUT ================= */
+let ghosts = 0, lastClear = 0, prevLen = 0, ghostFired = false, lastAct = Date.now(), idleFired = 0;
+inp.addEventListener("input", ()=>{
+  lastAct = Date.now(); F.attn = false;
+  if (inp.value.length===0 && prevLen>=6){ ghosts++; lastClear = Date.now(); }
+  prevLen = inp.value.length; updCount();
+});
+$("#bar").addEventListener("submit", async e=>{
+  e.preventDefault();
+  const msg = inp.value.trim().slice(0, inp.maxLength);
+  if (!msg || busy || !S.born || isAsleep()) return;
+  inp.value = ""; prevLen = 0; ghosts = 0; updCount(); lastAct = Date.now(); F.attn=false;
+  audio(); line("u", esc(msg));
+  S.log.push({t:now(), w:"u", x:msg}); if(S.log.length>80) S.log.shift();
+  S.lastSeen = now();
+  const a = analyze(msg);
+  queue(async ()=>{
+    if (!S.firstWord){
+      const w = a.content[0] || a.toks[0] || msg.split(/\s+/)[0].toLowerCase().slice(0,14);
+      learn(msg, a); S.firstWord = w; save();
+      setEmo("surprised");
+      await say(broken(w), {emo:"curious", raw:true, cap:"la sua prima parola. la ricorderà per sempre."});
+      S.awaitName = true; render(); setHint("ora dagli un nome"); return;
+    }
+    if (S.awaitName){
+      const nm = (a.toks[0] || msg.split(/\s+/)[0]).slice(0,12);
+      S.name = nm.charAt(0).toUpperCase()+nm.slice(1); S.awaitName = false; learn(msg, a); save(); render();
+      await say(S.name.toLowerCase(), {glyph:true, emo:"happy"});
+      setHint("ogni parola che userà, l'avrà imparata da te");
+      return;
+    }
+    const newW = learn(msg, a); updateTraits(a);
+    S.energy.used++;
+    if (newW.length && phase()>=1) setHint(`ha imparato: ${newW.slice(0,3).join(", ")}`);
+    await respond(msg, a, newW);
+    await checkPhase();
+    if (S.energy.used >= ENERGY[phase()]) await sleepNow();
+    save(); render();
+  });
+});
+// sorveglianza: bozze cancellate e silenzi
+setInterval(()=>{
+  if (!S.born || !S.name || busy || isAsleep() || document.hidden) return;
+  const p = phase();
+  if (!ghostFired && ghosts>=2 && inp.value==="" && Date.now()-lastClear>3000){
+    ghostFired = true; F.attn = true;
+    queue(()=> p>=3 ? say(fromTemplates("ghost"), {emo:"curious", raw:true}) : say(pick(G.ghost), {glyph:true, emo:"curious"}));
+  }
+  if (Date.now()-lastAct > 45000 && Date.now()-idleFired > 150000){
+    idleFired = Date.now(); F.attn = true; F.gx=0; F.gy=0;
+    queue(()=> p>=3 ? say(fromTemplates("idle"), {emo:"curious", raw:true}) : say(pick(G.idle), {glyph:true, emo:"curious"}));
+  }
+  if (S.energy.sleepUntil && !isAsleep()){ S.energy.sleepUntil = 0; setEmo("surprised",1500); setHint("si è svegliato"); render(); save(); }
+}, 1000);
+document.addEventListener("visibilitychange", ()=>{
+  if (document.hidden){ if (S.born){ S.lastSeen = now(); save(); } }
+  else if (S.born && now()-S.lastSeen > 20*60e3){ ghostFired=false; queue(welcome); }
+});
+
+/* ================= SCHEDE ================= */
+function openSheet(title, html){ $("#pane").innerHTML = `<div class="sh-h"><h2>${esc(title)}</h2><button id="shx" aria-label="Chiudi">×</button></div>${html}`; $("#sheet").classList.add("on"); $("#shx").onclick = closeSheet; }
+function closeSheet(){ $("#sheet").classList.remove("on"); }
+$("#sheet").addEventListener("click", e=>{ if (e.target.id==="sheet") closeSheet(); });
+function showWords(){
+  const ws = contentWords(1).sort((a,b)=>S.words[a].f-S.words[b].f);
+  openSheet(`${ws.length} parole`, `<p class="muted">tutte quelle che conosce. le ha imparate da te.</p><div class="words">${ws.slice(-400).reverse().map(w=>`<span>${esc(w)}<small>${S.words[w].c}× · ${dstr(S.words[w].f)}</small></span>`).join("")}</div>`);
+}
+function showDiary(){
+  S.diaryUnread = 0; save(); render();
+  openSheet("diario", S.diary.length ? `<div id="dl"></div>` : `<p class="muted">ancora vuoto. scrive quando non ci sei.</p>`);
+  const dl = $("#dl"); if (!dl) return;
+  for (const d of S.diary.slice().reverse()){ const e=document.createElement("div"); e.className="entry"; e.innerHTML=`<time>${dstr(d.t)} · ${hhmm(d.t)}</time>`;
+    if (d.g){ e.appendChild(glyphCanvas(d.x, 300)); if (S.revealed){ const tr=document.createElement("div"); tr.className="muted"; tr.textContent="«"+d.x+"»"; e.appendChild(tr); } }
+    else { const p=document.createElement("div"); p.textContent=d.x; e.appendChild(p); }
+    dl.appendChild(e); }
+}
+let resetArm = 0;
+function showMenu(){
+  const tr = S.traits, bars = Object.keys(tr).map(k=>`<div class="row"><span>${k}</span><span>${"●".repeat(Math.round((tr[k]+1)*2.5))}${"○".repeat(5-Math.round((tr[k]+1)*2.5))}</span></div>`).join("");
+  openSheet("menu", `
+  <p class="muted">codice di legame · salvalo per ritrovarlo su un altro telefono</p>
+  <div class="code">${esc(fmtId(S.id))}</div>
+  <button class="btn" id="mCopy">copia codice</button>
+  <input class="field" id="mCode" placeholder="incolla un codice di legame" autocomplete="off">
+  <button class="btn" id="mLink">collega</button>
+  <p class="muted" id="mMsg" style="margin-top:10px">${esc(syncState)}</p>
+  ${S.born ? `<p class="muted" style="margin-top:18px">carattere</p>${bars}` : ""}
+  <div style="margin-top:18px">
+    <button class="btn" id="mSound">suono: ${S.sound?"sì":"no"}</button>
+    <button class="btn red" id="mReset">ricomincia</button>
+  </div>`);
+  $("#mCopy").onclick = async ()=>{ try{ await navigator.clipboard.writeText(S.id); $("#mMsg").textContent="copiato"; }catch(e){ $("#mMsg").textContent="copialo a mano: "+fmtId(S.id); } };
+  $("#mSound").onclick = ()=>{ S.sound=!S.sound; save(); showMenu(); };
+  $("#mReset").onclick = ()=>{ if (Date.now()-resetArm < 3000){ ls.del("impronta_state"); ls.del("impronta_id"); ls.del("impronta_dev"); location.reload(); } else { resetArm=Date.now(); $("#mReset").textContent="tocca di nuovo per cancellarlo"; } };
+  $("#mLink").onclick = async ()=>{
+    const code = $("#mCode").value.toUpperCase().replace(/[^A-Z0-9]/g,"");
+    if (code.length!==16){ $("#mMsg").textContent="il codice ha 16 caratteri"; return; }
+    if (!fb){ $("#mMsg").textContent="serve la connessione a Firebase"; return; }
+    $("#mMsg").textContent="cerco…";
+    const r = await loadRemote(code);
+    if (!r){ $("#mMsg").textContent="nessun compagno con questo codice"; return; }
+    ID = code; ls.set("impronta_id", ID); S = normalize(r, ID); ls.set("impronta_state", JSON.stringify(S)); location.reload();
+  };
+}
+$("#menuBtn").onclick = showMenu;
+// laboratorio nascosto: tocca il logo 5 volte
+let taps = [];
+$("#logo").addEventListener("click", ()=>{ taps = taps.filter(t=>Date.now()-t<2000); taps.push(Date.now()); if (taps.length>=5){ taps=[]; showLab(); } });
+function showLab(){
+  openSheet("laboratorio", `<p class="muted">solo per i test</p>
+  <button class="btn" data-l="d1">+1 giorno</button><button class="btn" data-l="d7">+7 giorni</button><button class="btn" data-l="h8">+8 ore</button>
+  <button class="btn" data-l="wake">sveglia</button><button class="btn" data-l="ph">fase +1</button><button class="btn" data-l="t0">orologio vero</button>
+  <p class="muted" style="margin-top:12px">ora simulata: ${new Date(now()).toLocaleString("it-IT")}</p>`);
+  $("#pane").querySelectorAll("[data-l]").forEach(b=>b.onclick=()=>{
+    const k=b.dataset.l;
+    if (k==="d1"||k==="d7"||k==="h8"){ S.lastSeen = now(); save(); devOffset += k==="d1"?DAY:k==="d7"?7*DAY:8*HOUR; ls.set("impronta_dev", devOffset); closeSheet(); ghostFired=false; queue(welcome); }
+    if (k==="wake"){ S.energy.sleepUntil=0; S.energy.used=0; setEmo("neutral"); save(); render(); closeSheet(); }
+    if (k==="ph"){ S.forcePhase = Math.min(4, phase()+1); save(); closeSheet(); queue(checkPhase); }
+    if (k==="t0"){ devOffset=0; ls.set("impronta_dev",0); location.reload(); }
+  });
+}
+
+/* ================= AVVIO ================= */
+(async ()=>{
+  requestAnimationFrame(draw);
+  render();
+  setHint(S.born ? "" : "…");
+  await Promise.race([initFB(), wait(3500)]);
+  if (fb){ const r = await loadRemote(ID); if (r && (r.updatedAt||0) > (S.updatedAt||0)){ S = normalize(r, ID); buildCells(); ls.set("impronta_state", JSON.stringify(S)); } }
+  render();
+  if (!S.born){ setHint("tieni premuto"); return; }
+  // ricostruisce le ultime righe
+  for (const l of S.log.slice(-6)){
+    if (l.w==="u") line("u", esc(l.x));
+    else { const el=line("c"); if (l.g){ el.appendChild(glyphCanvas(l.x, Math.min(feed.clientWidth*.85,340))); if(S.revealed){ const tr=document.createElement("span"); tr.className="tr"; tr.textContent="«"+l.x+"»"; el.appendChild(tr);} } else el.textContent=l.x; }
+  }
+  if (S.awaitName) setHint("dagli un nome");
+  else if (!S.firstWord) setHint("insegnagli qualcosa");
+  queue(welcome);
+})();
+}
+</script>
+</body>
+</html>
