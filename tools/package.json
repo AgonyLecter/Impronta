@@ -1,0 +1,9 @@
+{
+  "name": "impronta-sogni",
+  "private": true,
+  "type": "module",
+  "description": "allena di notte, su GitHub Actions, le reti dei compagni che dormono",
+  "dependencies": {
+    "firebase-admin": "12.7.0"
+  }
+}

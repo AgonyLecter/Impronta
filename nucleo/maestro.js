@@ -16,6 +16,7 @@ export class Maestro {
 
   init({ saved, corpus = [], labels = [], seed = 7 }){
     this.net = saved ? Rete.load(saved) : new Rete({ seed, H: 16 });
+    this.seedTrain = []; this.seedTest = []; this.hist = []; this.best = Infinity; this.stall = 0; this.rounds = 0; // init si può ripetere (rete arrivata dal server)
     if (saved && saved.maestro){ this.hist = saved.maestro.hist || []; this.best = saved.maestro.best ?? Infinity; this.rounds = saved.maestro.rounds || 0; }
     // istinto: 85% per imparare, 15% per verificarsi (scelta deterministica)
     const S = istinto(AFFETTI);
@@ -97,7 +98,7 @@ export class Maestro {
     o._incerto = top > .35 && top < .62;
     return o;
   }
-  parla({ seeds = [], n = 40, k = 6, max = 12 }){
+  parla({ seeds = [], n = 40, k = 6, max = 12, temp = .8 }){
     if (this.user.length < 6 || this.net.steps < 600) return [];
     const known = new Set(this.user.map(e => e.line).filter(Boolean)), seen = new Set(), out = [];
     const lines = [...known].map(l => new Set(tok(l)));
@@ -106,7 +107,7 @@ export class Maestro {
     for (const sd of seeds){ for (const e of this.user){ if (!e.line) continue; const ws = tok(e.line), j = ws.indexOf(sd); if (j >= 0) prefixes.push(ws.slice(0, Math.max(1, j))); } }
     for (let i=0;i<n;i++){
       const seed = prefixes.length && i % 3 === 0 ? prefixes[Math.floor(this.net.r()*prefixes.length)] : [];
-      const g = this.net.gen({ seed, allow: this.allow, temp: .8 + (i%3)*.12, max });
+      const g = this.net.gen({ seed, allow: this.allow, temp: temp + (i%3)*.12, max });
       const ws = g.x.split(" ");
       if (ws.length < 3 || seen.has(g.x) || known.has(g.x)) continue;
       // deve essere davvero nuova: non una tua frase con una parola cambiata

@@ -6,6 +6,7 @@
      await n.senti(testo);                      // emozioni stimate
      await n.parla(argomenti);                  // frasi nuove con le tue parole
      await n.sogna(ms, onTick);                 // allenamento intenso (quando dorme)
+     await n.esporta() / n.importa(saved, …);   // la rete come dato (sogni sul server)
    Il pilota automatico allena la rete a piccoli sorsi mentre l'app è aperta,
    salva da solo, si valuta e fa crescere i neuroni quando serve. */
 import { AFFETTI } from "./rete.js";
@@ -75,7 +76,7 @@ export class Nucleo {
   async osserva(text, label = null){ if (!this.ready) return; await this.call("osserva", { x: text, lab: label ? label.lab : null, mask: label ? label.mask : null, w: label ? label.w : 1 }); }
   async corpus(corpus, labels){ if (!this.ready) return; this.info = { ...this.info, ...(await this.call("corpus", { corpus, labels })) }; }
   async senti(text){ if (!this.ready) return null; try { return await this.call("senti", { text }); } catch (e){ return null; } }
-  async parla(seeds = [], n = 36){ if (!this.ready) return []; try { return await this.call("parla", { seeds, n }); } catch (e){ return []; } }
+  async parla(seeds = [], n = 36, temp = .8){ if (!this.ready) return []; try { return await this.call("parla", { seeds, n, temp }); } catch (e){ return []; } }
   async mappa(words){ if (!this.ready) return []; try { return await this.call("map", { words }); } catch (e){ return []; } }
   async vicine(w, among){ if (!this.ready) return []; try { return await this.call("near", { w, n: 3, among }); } catch (e){ return []; } }
   /* sogno: allenamento intenso per un tempo dato, con aggiornamenti */
@@ -84,6 +85,14 @@ export class Nucleo {
     this.dreaming = true; const t0 = Date.now(); let r = null;
     while (Date.now() - t0 < ms && !stop()){ r = await this.impara(this.local ? 150 : 600); if (onTick) onTick(r, this.info); await wait(this.local ? 120 : 40); }
     this.dreaming = false; await this.salva(); return r;
+  }
+  /* la rete come dato (per caricarla sul server che la fa sognare ad app chiusa) */
+  async esporta(){ if (!this.ready) return null; return await this.call("save"); }
+  /* sostituisce la rete con una allenata altrove (il server dei sogni) */
+  async importa(saved, { corpus = [], labels = [], seed = 7 } = {}){
+    if (!this.ready || !saved) return null;
+    this.info = await this.call("init", { saved, corpus, labels, seed });
+    await this.salva(); this.emit(); return this.info;
   }
   async dimentica(){ clearInterval(this.timer); await store.del(this.key); }
 }

@@ -14,7 +14,7 @@ const FB_CONFIG = {
   messagingSenderId: "509243295842",
   appId: "1:509243295842:web:3d3c7f60166d497480293b"
 };
-const FB_V = "10.12.2", ROOT = "impronta";
+const FB_V = "10.12.2", ROOT = "impronta", NETS = "impronta_nets";
 
 /* ================= UTIL ================= */
 const $ = s => document.querySelector(s);
@@ -45,7 +45,7 @@ function blank(id){ return { v:2, id, born:0, name:"", userName:"", firstWord:""
   user:{msgs:0,chars:0,emoji:{},emojiMsgs:0,lower:0,excl:0,dot:0,abbr:{},hours:Array(24).fill(0),firstLens:[],lens:[],typing:{n:0,cps:0,del:0}},
   mem:{feel:[],events:[],people:{},topics:{},corpus:[],ask:null,openers:[],react:{},reward:{},labels:[],mood:[],pendingQ:null,confirm:null,ironyLex:{},ironyStats:{asked:0,hist:[]}},
   log:[], diary:[], diaryUnread:0, glyphs:[], revealed:false,
-  energy:{used:0,sleepUntil:0}, lastSeen:0, sessions:0, sparks:{}, hurt:0, promise:0, litSeen:0, sound:true, updatedAt:0 }; }
+  energy:{used:0,sleepUntil:0}, lastSeen:0, sessions:0, sparks:{}, hurt:0, promise:0, litSeen:0, sound:true, netSync:0, netUp:0, updatedAt:0 }; }
 const arr = v => Array.isArray(v) ? v : v ? Object.values(v) : [];
 function normalize(s, id){
   const b = blank(id), o = Object.assign(b, s||{});
@@ -87,6 +87,38 @@ function save(){
   S.updatedAt = Date.now();
   ls.set("impronta_state", JSON.stringify(S));
   clearTimeout(saveT); saveT = setTimeout(pushRemote, 1500);
+}
+/* SOGNI AD APP CHIUSA: quando dorme carica la rete su Firebase; ogni ora un workflow di GitHub
+   (tools/sogna.mjs) allena le reti di chi dorme. Al ritorno la rete allenata torna qui. */
+async function syncNetUp(){
+  if (!fb || !nucleo.ready || leaving || !(isAsleep() || S.energy.sleepStart)) return;
+  try{
+    const steps = nucleo.info && nucleo.info.steps; if (!steps || steps === S.netUp) return;
+    const saved = await nucleo.esporta(); if (!saved) return;
+    const at = Date.now();
+    await fb.set(fb.ref(fb.db, NETS+"/"+S.id), { meta:{ at, steps: saved.steps, H: saved.H, by:"tel" }, net: JSON.stringify(saved) });
+    S.netSync = at; S.netUp = steps; save();
+  }catch(e){ console.warn("rete non caricata", e && e.message); }
+}
+async function syncNetDown(){
+  if (!fb) return false;
+  if (!nucleo.ready && menteStart) await Promise.race([menteStart, wait(10000)]);
+  if (!nucleo.ready) return false;
+  try{
+    const ms = await Promise.race([fb.get(fb.ref(fb.db, NETS+"/"+S.id+"/meta")), wait(5000).then(()=>null)]);
+    const meta = ms && ms.exists() ? ms.val() : null;
+    if (!meta || meta.by !== "srv" || !(meta.at > (S.netSync||0)) || !(meta.steps > ((nucleo.info && nucleo.info.steps) || 0))) return false;
+    const ns = await Promise.race([fb.get(fb.ref(fb.db, NETS+"/"+S.id+"/net")), wait(20000).then(()=>null)]);
+    if (!ns || !ns.exists()) return false;
+    const before = nucleo.info || {}, net = ns.val(), saved = typeof net === "string" ? JSON.parse(net) : net;
+    const info = await nucleo.importa(saved, { corpus: S.mem.corpus, labels: S.mem.labels, seed: strSeed(S.id) });
+    if (!info) return false;
+    S.netSync = meta.at; S.netUp = info.steps; save();
+    const grew = info.H > (before.H || info.H) ? ` · è cresciuto a ${info.H} neuroni` : "";
+    setHint(`ha sognato mentre l'app era chiusa · +${Math.max(0, info.steps - (before.steps||0))} passi${grew}`, true);
+    ripple(.5, 55); render();
+    return true;
+  }catch(e){ console.warn("rete del server non importata", e && e.message); return false; }
 }
 async function pushRemote(){ clearTimeout(saveT); if(!fb || leaving) return; try{ await fb.set(fb.ref(fb.db, ROOT+"/"+S.id), JSON.parse(JSON.stringify(S))); syncState="sincronizzato"; }catch(e){ syncState="errore di sincronizzazione"; } }
 
@@ -248,9 +280,10 @@ function favicon(){ try{ const c=document.createElement("canvas"); c.width=c.hei
 const nucleo = new Nucleo({
   onCresce: (g) => { ripple(.9, 50); setTimeout(()=>ripple(.6, 65), 250); buzz([20,40,20]); tone(660,.12,"triangle",.03); tone(990,.16,"triangle",.03,.12); setHint(`*è cresciuto* · ${g.from} → ${g.to} neuroni`, true); S.sparks.lastGrow = { ...g, t: Date.now() }; save(); }
 });
+let menteStart = null;
 const mente = {
   get ready(){ return nucleo.ready; }, get info(){ return nucleo.info; },
-  start(){ return nucleo.avvia({ corpus: S.mem.corpus, labels: S.mem.labels, seed: strSeed(S.id) }).catch(e => console.warn("nucleo", e)); },
+  start(){ return menteStart = nucleo.avvia({ corpus: S.mem.corpus, labels: S.mem.labels, seed: strSeed(S.id) }).catch(e => console.warn("nucleo", e)); },
   train(){ return nucleo.impara(200); },
   persist(){ return nucleo.salva(); },
   speak(seeds, n){ return nucleo.parla(seeds, n); },
@@ -452,7 +485,7 @@ async function dream({ maxMs = Infinity, force = false, catchup = false } = {}){
   }
   F.dream = 0; dreaming = false; clearDreams(); await nucleo.salva();
   if (!E.dreamt && E.dreamMs > 4000 && p >= 3){
-    const d = (await nucleo.parla([], 30))[0];
+    let d = null; for (const temp of [.8, 1.1, 1.4]){ d = (await nucleo.parla([], 30, temp))[0]; if (d) break; }  // se le ripete a memoria, sogna "più caldo"
     if (d){ E.dreamt = 1; S.diary.push({t:now(), x:`ho sognato: «${d.x}»`}); S.diaryUnread++; render(); }
   }
   save();
@@ -468,6 +501,7 @@ async function sleepNow(){
   Object.assign(E, { sleepStart: now(), sleepUntil: now() + mins*60e3, need: clamp(fresh*1600, 15000, 120000), dreamMs: 0, dreamt: 0 });
   setEmo("sleep"); [400,300,200].forEach((f,i)=>tone(f,.25,"sine",.03,i*.25));
   setHint("si è addormentato · tieni premuto sul volto per svegliarlo"); save(); render();
+  syncNetUp();
   dream();
 }
 /* riapri l'app: se ha dormito mentre era chiusa, recupera i sogni persi */
@@ -529,6 +563,7 @@ function showMirror(){
 /* ================= ASSENZA ================= */
 async function welcome(){
   const t = now(), last = S.lastSeen, el = last ? t - last : 0, p = phase();
+  await syncNetDown();             // prima di tutto: la rete che ha sognato sul server
   S.lastSeen = t; sessionMsgs = 0;
   S.sessions++; S.user.hours[new Date(t).getHours()]++;
   S.hurt *= Math.pow(.5, el/(6*HOUR));
@@ -786,11 +821,11 @@ setInterval(()=>{
   if (S.energy.sleepUntil && !isAsleep() && !wakingUp && !dreaming) queue(()=>wakeNatural("ha dormito abbastanza"));
 }, 1000);
 document.addEventListener("visibilitychange", ()=>{
-  if (document.hidden){ if (S.born){ S.lastSeen = now(); save(); pushRemote(); mente.persist(); } }
+  if (document.hidden){ if (S.born){ S.lastSeen = now(); save(); pushRemote(); mente.persist().then(syncNetUp); } }
   else {
     if (fb) loadRemote(S.id).then(r=>{ if (r && stamp(r.updatedAt) > stamp(S.updatedAt) + 2000 && !busy){ clearTimeout(saveT); ls.set("impronta_state", JSON.stringify(normalize(r, S.id))); location.reload(); } });
     if (S.born && now()-S.lastSeen > 20*60e3){ ghostFired=false; queue(welcome); }
-    else if (isAsleep()) sleepResume();
+    else syncNetDown().then(() => { if (isAsleep()) sleepResume(); });
   }
 });
 
@@ -824,7 +859,7 @@ async function showMind(){
   const i = nucleo.info, last = i && i.last;
   const grow = i && i.growth && i.growth.length ? [i.growth[0].from, ...i.growth.map(g=>g.to)].join(" → ") : (i ? String(i.H) : "—");
   const N = v => v == null ? "—" : Number(v).toLocaleString("it-IT");
-  openSheet("mente", `<p class="muted">una rete neurale ricorrente nata vuota e cresciuta solo con te, qui sul telefono. nessun server, nessuna libreria: ogni riga di matematica è scritta a mano.</p>
+  openSheet("mente", `<p class="muted">una rete neurale ricorrente nata vuota e cresciuta solo con te, qui sul telefono (e quando dorme, anche ad app chiusa). nessuna IA esterna, nessuna libreria: ogni riga di matematica è scritta a mano.</p>
     <canvas id="map"></canvas><p class="muted" style="text-align:center;margin:0">le parole vicine, per lui, vogliono dire cose simili. l'ha capito da solo.</p>
     <canvas id="spark"></canvas><p class="muted" style="text-align:center;margin:0 0 6px">quanto capisce le emozioni, misurato su frasi che non ha mai visto</p>
     <div class="row"><span>neuroni</span><span class="num">${grow}</span></div>
@@ -833,6 +868,7 @@ async function showMind(){
     <div class="row"><span>frasi lette</span><span class="num">${N(i && i.steps)}</span></div>
     <div class="row"><span>frasi tue da cui impara</span><span class="num">${N(i && i.frasi)}</span></div>
     <div class="row"><span>dove pensa</span><span>${nucleo.mode}</span></div>
+    <div class="row"><span>sogni ad app chiusa</span><span>${S.energy.srv ? `${dstr(S.energy.srv.t)} · ${hhmm(S.energy.srv.t)} · +${N(S.energy.srv.steps)} passi` : S.netUp ? "rete affidata al server" : "non ancora"}</span></div>
     ${phase()<3 ? `<p class="muted" style="margin-top:14px">la userà per parlare dalla fase «frase». intanto ascolta e impara a sentire.</p>` : ""}
     <button class="btn" id="mChar">come ti vede</button><button class="btn" id="mLog">ricordi</button>`);
   $("#mLog").onclick = showLog; $("#mChar").onclick = showCarattere;
