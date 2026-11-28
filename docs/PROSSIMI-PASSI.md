@@ -27,11 +27,12 @@ Modello convertito in ~50 s e in cache (`~/.impronta/opus`); registro:
 `traduttore libero: pronto («The sea is blue.» → «Il mare è blu.»)`, suo traduttore 15% contro 56% del libero.
 Dettagli in `tools/traduci.py` e nel workflow.
 
-### 2. Il giro orario di GitHub non parte → sveglia esterna (cron-job.org), IN CORSO
+### 2. Il giro orario di GitHub non parte → sveglia esterna (cron-job.org), FATTO
 Il `cron: "23 * * * *"` è partito in automatico una sola volta (00:06 del 28/11), poi più niente.
 Soluzione scelta con l'utente: cron-job.org chiama ogni ora l'API `workflow_dispatch` con un token
 fine-grained dedicato (solo Impronta, solo Actions). Passi in `docs/PIANO-SOGNI-GITHUB.md`, punto 5.
-Il token lo crea e lo tiene l'utente: non chiederlo in chat. Verifica: `actions_list` list_workflow_runs su
+Configurata dall'utente il 28/11: Test run → 204, giro n. 9 partito (04:36 UTC).
+Il token lo crea e lo tiene l'utente: non chiederlo in chat. Verifica che continui: `actions_list` list_workflow_runs su
 `sogni.yml` → giri `workflow_dispatch` ogni ora verso il minuto 53 senza che nessuno li lanci.
 
 ### 3. Da verificare al primo giro con il compagno addormentato
