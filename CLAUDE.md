@@ -29,7 +29,7 @@ Web app statica (GitHub Pages da `main`), tutta in italiano, nessuna API di IA a
 | `senso.js` | ritmo di scrittura, lettura dal vivo mentre scrivi, profezia in glifi |
 | `nucleo/rete.js` | rete GRU scritta a mano: BPTT + Adam, testa affettiva (8 emozioni), trigrammi di lettere, crescita in larghezza (`widen`, `widenD`) e profondità (`deepen`, strati residui), softmax campionata, salvataggio base64 (anche 16 bit) |
 | `nucleo/maestro.js` | autoapprendimento: curriculum (frasi utente + istinto), autovalutazione su esempi tenuti da parte, politica di crescita, `senti`, `parla` |
-| `nucleo/istinto.js` | ~200 frasi etichettate per le emozioni (servono a capire, MAI a parlare) |
+| `nucleo/istinto.js` | ~600 frasi etichettate per le emozioni (servono a capire, MAI a parlare) |
 | `nucleo/etichette.js` | etichette automatiche da emoji/segnali, `conferma`, `valenza` |
 | `nucleo/carattere.js` | modello dell'utente: tratti, collegamenti argomenti/orari/umore |
 | `nucleo/studio.js` | studio da solo: lettore Wikimedia + link, fatti Wikidata (`fatti`, `frasiDaFatti`), Wikiquote, RSS, Gutenberg, Wikipedia inglese con `traduci()`; curiosità, scoperte |
@@ -53,13 +53,13 @@ Web app statica (GitHub Pages da `main`), tutta in italiano, nessuna API di IA a
 - **Ironia**: `B.ironyEstimate` (rete + regole + `S.mem.ironyLex`); nel dubbio chiede (`S.mem.confirm`), statistiche in `S.mem.ironyStats`.
 
 ## Come testare
-- Logica pura (Node): `node test/insegnamenti.mjs`, `node test/gradienti.mjs` e `node test/sogni-server.mjs`, `node test/crescita.mjs`, `node test/studio.mjs` (tutte le righe devono dire `ok`), `node test/maestro.mjs` (crescita + emozioni su frasi nuove, ~30 s).
+- Logica pura (Node): `node test/insegnamenti.mjs`, `node test/gradienti.mjs` e `node test/sogni-server.mjs`, `node test/crescita.mjs`, `node test/studio.mjs` (tutte le righe devono dire `ok`), `node test/maestro.mjs` (crescita + emozioni su frasi nuove, ~30 s), `node test/emozioni.mjs` (comprensione emotiva su due banchi di frasi mai viste, ~20 s).
 - Fonti e traduzione: `node test/fonti.mjs`, `node test/traduttore.mjs` (gradienti dell'encoder-decoder, impara, notte sul server).
 - Browser: `node test/browser.cjs`, `node test/browser-studio.cjs`, `node test/browser-nascita.cjs` e `node test/browser-mondo.cjs` (servizi esterni simulati con `route`; quest'ultimo usa `https://impronta.local` perché la posizione vuole una pagina sicura) usa Playwright (già installato nell'ambiente cloud) e serve i file con `page.route` su `http://impronta.local/` — **non avviare server locali** (in questo ambiente il comando viene bloccato). `window.__impronta.idle` dice quando l'app ha finito di rispondere.
 - Firebase, gstatic e Wikipedia sono bloccati dal proxy nell'ambiente cloud: sincronizzazione e studio vero non sono testabili lì (lo studio sì, con fonti finte).
 
 ## Problemi noti
-- Comprensione emotiva misurata ~20-35% su frasi mai viste: l'istinto è piccolo. Allargare `nucleo/istinto.js` (soprattutto ironia, tristezza, rabbia) è il miglioramento più efficace.
+- Comprensione emotiva su frasi mai viste (`node test/emozioni.mjs`, 40 giri): banco 1 ~68%, banco 2 scritto alla cieca ~43% (prima dell'allargamento dell'istinto: ~49% e ~35%). Le frasi lunghe e piene di parole nuove restano difficili. Non ritoccare l'istinto guardando il banco 2: è la misura onesta.
 - Le frasi inventate dalla rete con pochi dati sono a volte sconnesse: sono filtrate e hanno peso basso in fase 3.
 - La rete in fase 3-4 è pesata da `brain.js` (sezione 8 "voce"): attenzione a non farla vincere sulle risposte dirette.
 

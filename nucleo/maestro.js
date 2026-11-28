@@ -137,7 +137,7 @@ export class Maestro {
   }
   senti(text){
     const words = tok(text); if (!words.length) return null;
-    const f = this.net.fwd(this.net.ids(words, false), false), o = {};
+    const f = this.net.fwd(this.net.idsLeggi(words), false), o = {};
     AFFETTI.forEach((k,i) => o[k] = +f.a[i].toFixed(3));
     const vals = Object.values(o), top = Math.max(...vals);
     o._top = AFFETTI[vals.indexOf(top)]; o._conf = top;

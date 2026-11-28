@@ -44,7 +44,7 @@ Per farlo dormire: laboratorio (tocca 5 volte «impronta.») → «dormi», chiu
 
 ### 4. Idee già discusse, non fatte
 - Un modulo di calcolo scritto a mano (la rete non sa fare i conti).
-- Allargare `nucleo/istinto.js` (comprensione emotiva ~20-35%).
+- ~~Allargare `nucleo/istinto.js`~~ FATTO: ~600 frasi; `test/emozioni.mjs` misura su frasi mai viste (banco alla cieca ~35% → ~43%). Le parole sconosciute ora si leggono dai trigrammi (`Rete.idsLeggi`).
 - Far usare alla rete gli appunti/scoperte per rispondere (oggi risponde con le scoperte salvate).
 
 ### 5. Preferenze SUE (richiesta dell'utente, da progettare e fare)
