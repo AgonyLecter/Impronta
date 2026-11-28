@@ -29,7 +29,9 @@ export const FEED = [{ nome: "Il Post", url: "https://www.ilpost.it/feed/" }, { 
 export const MATERIE = ["matematica","geometria","algebra","fisica","chimica","biologia","astronomia","storia","geografia",
   "filosofia","letteratura italiana","informatica","latino","musica","storia dell'arte","economia","psicologia","scienze della terra"];
 export const CLASSICI = ["Le avventure di Pinocchio","I promessi sposi","Divina Commedia","Il principe","Operette morali",
-  "Dialogo sopra i due massimi sistemi del mondo","Cuore (De Amicis)","I Malavoglia","Il fu Mattia Pascal","Canti (Leopardi)"];
+  "Dialogo sopra i due massimi sistemi del mondo","Cuore (De Amicis)","I Malavoglia","Il fu Mattia Pascal","Canti (Leopardi)",
+  "Decameron","Orlando furioso","Le mie prigioni","Novelle per un anno","Il Novellino","Le confessioni di un italiano","Mastro-don Gesualdo",
+  "Il piacere","Ultime lettere di Jacopo Ortis","Il Canzoniere","Gerusalemme liberata","Fosca","Senilità","Piccolo mondo antico"];
 
 const UA = "impronta-studio/1.0 (compagno digitale open source, uso personale)";
 const STOP = new Set("il lo la i gli le un uno una di a da in con su per tra fra e ed o ma che chi non è sono sei ho hai ha mi ti si ci vi ne me te lui lei noi voi loro io tu del della dei delle al alla ai nel nella sul sulla questo questa quello quella cosa come dove quando perché anche ancora già poi solo se sì no ok mio mia tuo tua suo sua oggi ora molto poco più tipo".split(" "));
