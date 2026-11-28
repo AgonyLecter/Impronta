@@ -1,0 +1,20 @@
+/* lezioni: i tanti modi di insegnargli una parola, e cosa NON è una lezione */
+import { lezione, risposta } from "../nucleo/lezioni.js";
+let fail = 0; const ok = (c, m) => { console.log((c ? "ok   " : "NO   ") + m); if (!c) fail++; };
+const eq = (t, atteso, attesa = null) => { const L = lezione(t, attesa); const s = JSON.stringify(L); ok(s === JSON.stringify(atteso), `«${t}»${attesa ? ` (aspettava «${attesa}»)` : ""} → ${s}`); };
+eq("ti insegno una parola: zibaldone", { tipo: "chiedi", w: "zibaldone" });
+eq("vuol dire quaderno di appunti", { tipo: "def", w: "zibaldone", x: "quaderno di appunti" }, "zibaldone");
+eq("zibaldone vuol dire quaderno di appunti senza ordine", { tipo: "def", w: "zibaldone", x: "quaderno di appunti senza ordine" });
+eq("impara: ghiribizzo = un'idea strana e improvvisa", { tipo: "def", w: "ghiribizzo", x: "un'idea strana e improvvisa" });
+eq("la parola uggioso significa noioso e malinconico", { tipo: "def", w: "uggioso", x: "noioso e malinconico" });
+eq("si dice abbiocco quando ti viene sonno dopo mangiato", { tipo: "def", w: "abbiocco", x: "quando ti viene sonno dopo mangiato" });
+eq("no, zibaldone vuol dire raccolta di pensieri", { tipo: "correggi", w: "zibaldone", x: "raccolta di pensieri" });
+eq("felice è come contento", { tipo: "sinonimo", w: "felice", y: "contento" });
+eq("allegro e contento sono sinonimi", { tipo: "sinonimo", w: "allegro", y: "contento" });
+eq("il contrario di caldo è freddo", { tipo: "contrario", w: "caldo", y: "freddo" });
+eq("dimentica la parola zibaldone", { tipo: "dimentica", w: "zibaldone" });
+eq("cosa ti ho insegnato?", { tipo: "elenco" });
+for (const t of ["oggi sono andato al mare", "il mare è bello", "cosa vuol dire zibaldone?", "sono stanco", "io sono luca", "tu sei bravo", "ti voglio bene", "quanto fa 3 più 4"]) ok(lezione(t) === null, `non è una lezione: «${t}»`);
+ok(risposta({ tipo: "def", w: "zibaldone", x: "quaderno di appunti" }, { prima: true }) === "zibaldone vuol dire quaderno di appunti. è la prima parola che mi insegni. non la dimentico", "la prima parola che gli insegni la festeggia");
+ok(risposta({ tipo: "correggi", w: "zibaldone", x: "raccolta di pensieri" }, { vecchia: "quaderno" }) === "ah. pensavo che zibaldone fosse quaderno. invece vuol dire raccolta di pensieri. grazie", "quando lo correggi dice cosa pensava prima");
+console.log(fail ? `${fail} errori` : "tutto ok"); process.exit(fail ? 1 : 0);

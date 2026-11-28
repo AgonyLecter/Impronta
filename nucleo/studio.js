@@ -272,8 +272,9 @@ export function scegli(S, st, { max = 10 } = {}){
   for (const w of tue.filter(w => !defs[w]).slice(0, 40)){ if (jobs.filter(j => j.fonte === "wikizionario").length >= 1) break; add({ k: chiave("wikizionario", w), tipo: "parola", fonte: "wikizionario", q: w, perche: "la usi e non sapevo cosa vuol dire" }); }
   // 4. una materia, un capitolo
   const m = MATERIE[st.materia % MATERIE.length]; add({ k: "materia:" + m + ":" + ((st.materie[m] && st.materie[m].i) || 0), tipo: "materia", materia: m, perche: "sto studiando " + m });
-  // 5. un classico
-  add({ k: "classico:" + (st.libro ? st.libro.titolo + ":" + st.libro.i : st.classico), tipo: "classico", perche: "leggo un libro" });
+  // 5. un libro: quello che gli hai chiesto tu, o un classico
+  const chiesto = !st.libro && arr(S.mem && S.mem.leggi).some(x => x && x.titolo && !(st.letti || []).includes(x.titolo));
+  add({ k: "classico:" + (st.libro ? st.libro.titolo + ":" + st.libro.i : chiesto ? "chiesto:" + (st.letti || []).length : st.classico), tipo: "classico", perche: chiesto ? "me l'hai chiesto tu" : "leggo un libro" });
   // 7. le notizie della notte, 8. un pezzo di libro da Gutenberg, ogni tanto una citazione
   add({ k: "notizie:" + (st.notti || 0), tipo: "notizie", perche: "leggo le notizie" });
   // Gutenberg (Gutendex e il sito) rifiuta i server cloud (403/503, provato dal vivo): i libri arrivano da Wikisource.
@@ -371,7 +372,9 @@ export async function studia({ fetch, S, stato, budgetMs = 45000, maxPagine = 10
         }
       } else if (job.tipo === "classico"){
         if (!st.libro){
-          const titolo = CLASSICI[st.classico % CLASSICI.length]; st.classico++;
+          // prima i libri che gli hai chiesto tu (S.mem.leggi), poi i classici in ordine
+          st.letti = st.letti || []; const chiesto = arr(S.mem && S.mem.leggi).map(x => x && x.titolo).find(t => t && !st.letti.includes(t));
+          const titolo = chiesto || CLASSICI[st.classico % CLASSICI.length]; if (chiesto) st.letti.push(chiesto); else st.classico++;
           const [r] = await L.cerca("wikisource", titolo, 1);
           const radice = r ? r.split("/")[0] : titolo, cap = await L.sottopagine("wikisource", radice).catch(() => []);
           st.libro = { titolo: radice, capitoli: cap.length ? cap : [radice], i: 0 };

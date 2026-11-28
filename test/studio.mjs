@@ -69,6 +69,8 @@ ok(r2.letture.some(x => /numero primo/.test(x)) || r2.stato.materie.matematica, 
 { const st2 = { ...r.stato, coda: [...r.stato.coda, { f: "wikipedia", t: "Onde del mare", da: "Mare" }] };
   const js = scegli({ ...S, mem: { ...S.mem, studia: [], gusti: { preferiti: { temi: "Mare" } } } }, st2);
   ok(js.some(j => j.tipo === "pagina" && /mi piace «Mare»/.test(j.perche) && st2.coda.some(c => c.t === j.titolo && c.da === "Mare")), "i suoi gusti scelgono cosa leggere: segue un collegamento dell'argomento preferito"); }
+{ const js = scegli({ ...S, mem: { ...S.mem, studia: [], leggi: [{ titolo: "Le avventure di Pinocchio", t: now }] } }, nuovoStato());
+  ok(js.some(j => j.tipo === "classico" && j.perche === "me l'hai chiesto tu"), "di notte legge il libro che gli hai chiesto tu (prima dei classici)"); }
 const R = riassunto(r2.stato); ok(R.pagine > 5 && R.frasi > 15, `riassunto: ${R.pagine} pagine, ${R.frasi} frasi, prossima materia ${R.prossima}`);
 
 // --- crescita: sul telefono resta piccola, sul server cresce oltre 192 neuroni e in profondità

@@ -4,13 +4,14 @@ import { Ritmo, liveRead, prophecy, prophecyHit } from "./senso.js";
 import { Nucleo, AFFETTI, etichetta, conferma, registra, analizza } from "./nucleo/index.js";
 import { impacchetta, spacchetta } from "./nucleo/pacco.js";
 import { cervello, cuore, galassia, puntini, tile, segmenti, titolo } from "./hud.js";
-import { lettore, frasi as frasiDa, definizione, FEED, dizionario as dizionarioDa } from "./nucleo/studio.js";
+import { lettore, frasi as frasiDa, definizione, FEED, dizionario as dizionarioDa, MATERIE as MATERIE_IT, CLASSICI as CLASSICI_IT, frasiDaFatti } from "./nucleo/studio.js";
 import * as Mondo from "./mondo.js";
 import * as Gusti from "./nucleo/gusti.js";
 import { calcola } from "./nucleo/calcolo.js";
 import * as Appunti from "./nucleo/appunti.js";
 import * as Interiore from "./nucleo/interiore.js";
 import * as Ricordi from "./nucleo/ricordi.js";
+import * as Lezioni from "./nucleo/lezioni.js";
 const { PHASES, LIMITS, ENERGY, NEED, HOUR, DAY, DAYS, G, STOP, START } = B;
 
 /* ================= CONFIG ================= */
@@ -52,7 +53,7 @@ function blank(id){ return { v:2, id, born:0, name:"", userName:"", firstWord:""
   phase:3, words:{}, phrases:{}, quotes:[], likes:[], dislikes:[], defs:{}, self:{is:[],likes:[]}, facts:{},
   traits:{calore:0,ironia:0,curiosita:0,coraggio:0,calma:0,malinconia:0},
   user:{msgs:0,chars:0,emoji:{},emojiMsgs:0,lower:0,excl:0,dot:0,abbr:{},hours:Array(24).fill(0),firstLens:[],lens:[],typing:{n:0,cps:0,del:0}},
-  mem:{feel:[],events:[],people:{},topics:{},corpus:[],ask:null,openers:[],react:{},reward:{},labels:[],mood:[],pendingQ:null,confirm:null,ironyLex:{},ironyStats:{asked:0,hist:[]},studia:[],scoperte:[],studio:null,notizie:[],citazioni:[],feed:[],luogo:null,traduttore:null,gusti:null,gustoUltimo:null,citati:[],ultimoAppunto:null,imparate:[],defFonte:{}},
+  mem:{feel:[],events:[],people:{},topics:{},corpus:[],ask:null,openers:[],react:{},reward:{},labels:[],mood:[],pendingQ:null,confirm:null,ironyLex:{},ironyStats:{asked:0,hist:[]},studia:[],scoperte:[],studio:null,notizie:[],citazioni:[],feed:[],luogo:null,traduttore:null,gusti:null,gustoUltimo:null,citati:[],ultimoAppunto:null,imparate:[],defFonte:{},insegnate:[],sinonimi:{},contrari:{}},
   log:[], diary:[], diaryUnread:0, glyphs:[], revealed:true,
   energy:{used:0,sleepUntil:0}, lastSeen:0, sessions:0, sparks:{}, hurt:0, promise:0, litSeen:0, sound:true, netSync:0, netUp:0, updatedAt:0, interno:null, ricordi:[] }; }
 const arr = v => Array.isArray(v) ? v : v ? Object.values(v) : [];
@@ -63,7 +64,7 @@ function normalize(s, id){
   for (const k of ["hours","firstLens","lens"]) o.user[k] = arr(o.user[k]);
   if (o.user.hours.length < 24) o.user.hours = Array(24).fill(0).map((_,i)=>o.user.hours[i]||0);
   o.user.typing = Object.assign({n:0,cps:0,del:0}, o.user.typing||{});
-  for (const k of ["feel","events","corpus","openers","labels","mood","studia","scoperte","notizie","citazioni","feed","citati","imparate"]) o.mem[k] = arr(o.mem[k]);
+  for (const k of ["feel","events","corpus","openers","labels","mood","studia","scoperte","notizie","citazioni","feed","citati","imparate","insegnate"]) o.mem[k] = arr(o.mem[k]);
   // pulizia: i link finiti tra le frasi e le parole, e le "scoperte" di pagine di Google
   o.mem.corpus = o.mem.corpus.filter(l => !/\b(https?|www)\b/.test(l));
   for (const w of ["https","http","www"]) delete (o.words||{})[w];
@@ -622,6 +623,32 @@ async function cercaAppunti(msg, minimo){
 const riposoOra = () => clamp(S.energy.used/(ENERGY[phase()] || 1), 0, 1);
 function interno(){ S.interno = Interiore.scorri(S.interno, now(), S.traits, { riposo: riposoOra() }); return S.interno; }
 function evento(tipo, forza = 1){ S.interno = Interiore.evento(interno(), tipo, now(), forza); }
+/* LEZIONI: le parole che gli insegni diventano sue (definizioni, sinonimi, contrari), entrano nella sua rete e negli appunti */
+async function insegnami(L){
+  const w = L.w, t = now();
+  S.mem.insegnate = S.mem.insegnate || []; S.mem.sinonimi = S.mem.sinonimi || {}; S.mem.contrari = S.mem.contrari || {};
+  const segna = w => { if (!S.words[w]) S.words[w] = { c: 1, f: t, s: 0 }; };
+  let x = null, cap = "imparata da te · entra nella sua rete e nei suoi appunti", frase = null;
+  if (L.tipo === "chiedi"){ segna(w); S.mem.ask = { w, t, insegna: 1 }; await say(Lezioni.risposta(L), { emo: "curious", raw:true, src:"chiede", cap: "spiegagliela: «vuol dire …»" }); return; }
+  if (L.tipo === "elenco"){
+    const I = S.mem.insegnate.slice(-8).map(i => i.w), n = S.mem.insegnate.length;
+    await say(n ? `mi hai insegnato ${I.length > 1 ? I.slice(0, -1).join(", ") + " e " + I[I.length - 1] : I[0]}` : "ancora niente. insegnami una parola: «zibaldone vuol dire …»", { emo: "happy", raw:true, src:"def", cap: n ? `${n} ${n === 1 ? "parola" : "parole"} in tutto · le trovi nella scheda parole` : "" }); return; }
+  if (L.tipo === "dimentica"){ delete S.defs[w]; S.mem.insegnate = S.mem.insegnate.filter(i => i.w !== w); await say(Lezioni.risposta(L), { emo: "sad", raw:true, src:"def" }); save(); return; }
+  segna(w);
+  const prima = (L.tipo === "def" || L.tipo === "correggi") && !S.mem.insegnate.length, vecchia = S.defs[w] || null;
+  if (L.tipo === "def" || L.tipo === "correggi"){ S.defs[w] = L.x; frase = `${w} vuol dire ${L.x}.`; if (S.words[w]) S.words[w].val = B.analyze(L.x).sv; if (L.tipo === "correggi") cap = "l'hai corretto: ora sa quella giusta"; }
+  if (L.tipo === "sinonimo"){ segna(L.y); for (const [a, b] of [[w, L.y], [L.y, w]]) S.mem.sinonimi[a] = [...new Set([...(S.mem.sinonimi[a] || []), b])].slice(-8);
+    if (!S.defs[w] && S.defs[L.y]) S.defs[w] = S.defs[L.y]; else if (!S.defs[w]) S.defs[w] = `come ${L.y}`; frase = `${w} è come ${L.y}.`; }
+  if (L.tipo === "contrario"){ segna(L.y); S.mem.contrari[w] = L.y; S.mem.contrari[L.y] = w; frase = `il contrario di ${w} è ${L.y}.`; }
+  S.mem.defFonte = { ...(S.mem.defFonte || {}), [w]: "me l'hai insegnato tu" };
+  S.mem.insegnate = [...S.mem.insegnate.filter(i => i.w !== w), { w, x: L.x || (L.tipo === "sinonimo" ? `come ${L.y}` : `il contrario di ${L.y}`), t, tipo: L.tipo }].slice(-200);
+  if (S.mem.ask && S.mem.ask.w === w) S.mem.ask = null;
+  evento("risposta"); evento("parola", .5);
+  if (prima) S.ricordi = Ricordi.aggiungi(S.ricordi, { x: `la prima parola che mi hai insegnato: «${w}»`, tu: frase, emo: "gioia", i: .9, prima: "prima parola", tipo: "prima volta" }, t);
+  if (frase) nucleo.leggi([frase]).catch(() => {});   // la sua rete si allena anche su questa frase
+  save();
+  await say(Lezioni.risposta(L, { prima, vecchia }), { emo: "happy", raw:true, src:"def", cap });
+}
 /* PAROLE NUOVE. Prima prova a capirle da solo (il suo dizionario, WordNet); se no te lo chiede;
    se non gliela spieghi la cerca sul Wikizionario. Ciò che capisce se lo salva (S.defs) e lo riusa. */
 const forme = w => [...new Set([w, w.replace(/i$/, "o"), w.replace(/e$/, "a"), w.replace(/i$/, "e"), w.replace(/he$/, "a").replace(/hi$/, "o")])];
@@ -680,7 +707,13 @@ function studyReply(msg, a){
   let m = low.match(/^(?:puoi |potresti |dai |ora )?(?:studia|studiare|studiati|impara|imparare|informati(?: su)?|leggi|leggiti|approfondisci)\s+(?:(?:qualcosa|tutto|un po')\s+)?(?:(?:su|sul|sullo|sulla|sui|sugli|sulle|di|del|dello|della|dei|degli|delle)\s+)?(.{2,60}?)[.!?]*$/);
   if (m){ const x = m[1].replace(/^(il|lo|la|i|gli|le|l'|un|una|uno)\s+/, "").replace(/^l'/, "").trim();
     if (/^(qualcosa|qualcosina|tutto|cose|roba|altro|di più)$/.test(x)) return { x: "cosa vuoi che studi? dimmi un argomento", emo:"curious", cap:"per esempio «studia i vulcani» o «studia la filosofia»" };
-    if (x.split(" ").length <= 6 && navigator.onLine !== false) return { live: x, perche: "me l'hai chiesto tu" };
+    // che tipo di studio: una parola (Wikizionario), un libro (Wikisource), una materia (manuale), un argomento (Wikipedia + Wikidata + Wikiquote)
+    const xs = x.replace(/^(?:l'\s*|l\s+)/, ""); let modo = "argomento", mm, q2 = xs;
+    if ((mm = xs.match(/^(?:(?:la )?parola|(?:il )?significato di|cosa vuol dire|(?:il )?termine)\s+(.+)$/))){ modo = "parola"; q2 = mm[1]; }
+    else if ((mm = xs.match(/^(?:(?:il )?libro|(?:il )?romanzo|(?:il )?poema|(?:la )?poesia|(?:le )?poesie|(?:la )?raccolta|(?:l')?opera)\s+(.+)$/)) || (/^(leggi|leggiti)/.test(low) && (mm = [null, xs]) && CLASSICI_IT.some(c => c.toLowerCase().includes(xs.toLowerCase())))){ modo = "libro"; q2 = mm[1]; }
+    else if ((mm = xs.match(/^(?:(?:la )?materia)\s+(.+)$/)) || MATERIE_IT.includes(xs.toLowerCase())){ modo = "materia"; q2 = mm ? mm[1] : xs; }
+    q2 = q2.replace(/^(il|lo|la|i|gli|le|l'|un|una|uno)\s+/, "").trim();
+    if (x.split(" ").length <= 8 && navigator.onLine !== false) return { live: q2, perche: "me l'hai chiesto tu", modo };
     if (x.split(" ").length <= 6){ addStudy({ k:"argomento", x }); return { x: pick([`va bene. stanotte studio ${x}`,`ok. quando dormo studio ${x}`]), cap:"lo cercherà da solo su Wikipedia, Wikibooks, Wikiversità e Wikisource mentre dorme" }; } }
   if (/(cosa|che) (hai|stai) (studiato|imparato|scoperto|studiando|leggendo|letto)|cosa studi\b/.test(low)){
     const D = S.mem.scoperte.slice(-3).reverse(), st = S.mem.studio;
@@ -701,32 +734,76 @@ function studyReply(msg, a){
 /* studio dal vivo: legge Wikipedia dal telefono mentre gli parli, impara le frasi, ti risponde con la fonte.
    Di notte, sul server, approfondisce (collegamenti, materie, libri). */
 let reading = false;
-async function liveStudy(q, perche){
+async function liveStudy(q, perche, modo = "argomento"){
   if (reading) return;
   reading = true; F.dream = 1;
-  await say(pick(["aspetta, vado a leggere","un attimo. leggo su wikipedia","non lo so ancora. vado a studiarlo"]), { emo:"curious", raw:true, src:"studio", cap:`sta leggendo Wikipedia su «${q}»…` });
-  let ris = null;
+  const INTRO = { parola: ["vado a vedere sul wikizionario", "la cerco sul dizionario"], libro: ["vado a prendere il libro", "lo cerco su wikisource"], materia: ["cerco un manuale", "vado a cercare un libro di scuola"], argomento: ["aspetta, vado a leggere", "un attimo. leggo e ti dico", "non lo so ancora. vado a studiarlo"] };
+  const DOVE = { parola: "Wikizionario", libro: "Wikisource e Wikipedia", materia: "Wikibooks e Wikiversità", argomento: "Wikipedia, Wikidata e Wikiquote" };
+  await say(pick(INTRO[modo] || INTRO.argomento), { emo:"curious", raw:true, src:"studio", cap:`sta leggendo ${DOVE[modo] || "Wikipedia"} su «${q}»…` });
+  const L = lettore((u, o) => fetch(u, { signal: o && o.signal }), { pausa: 150, timeout: 12000 });
+  const fine = () => { F.dream = 0; reading = false; };
+  const impara = async (fr, sc) => { const before = STUDIATE.length; if (fr.length) await nucleo.leggi(fr); await lessico(); evento("scoperta", .7);
+    if (sc){ S.mem.scoperte.push({ t: now(), detta: 1, perche, ...sc, frasi: fr.filter(f => f !== sc.x && f.length < 220).slice(0, 10) }); if (S.mem.scoperte.length > 60) S.mem.scoperte.splice(0, S.mem.scoperte.length - 60); }
+    save(); render(); ripple(.6, 55); return Math.max(0, STUDIATE.length - before); };
+  const corto = d => d && d.length > 260 ? d.slice(0, 257).replace(/\s\S*$/, "") + "…" : d;
   try {
-    const L = lettore((u, o) => fetch(u, { signal: o && o.signal }), { pausa: 150, timeout: 12000 });
+    if (modo === "parola"){
+      for (const f of forme(q.toLowerCase())){ const p = await L.pagina("wikizionario", f).catch(() => null); const fr = p ? dizionarioDa(p.testo, f) : []; const d0 = fr.find(x => / significa /.test(x));
+        if (d0){ const def = d0.replace(/^\S+ significa /, "").replace(/\.$/, ""); S.defs[q.toLowerCase()] = def; S.mem.defFonte = { ...(S.mem.defFonte || {}), [q.toLowerCase()]: "Wikizionario" };
+          const nuove = await impara(fr, null); fine();
+          const altre = fr.filter(x => x !== d0).slice(0, 1);
+          await say(`${q} vuol dire ${def}.${altre.length ? " " + altre[0].replace(/^\S+ (è come|viene) /, "$1 ") : ""}`, { emo:"happy", raw:true, src:"studio", cap:`fonte: Wikizionario · ora la sa${nuove ? ` · ${nuove} parole nuove` : ""}` }); return; } }
+      modo = "argomento";   // non c'è sul dizionario: proviamo come argomento
+    }
+    if (modo === "libro"){
+      const [r] = await L.cerca("wikisource", q, 1);
+      if (r){ const radice = r.split("/")[0], cap = await L.sottopagine("wikisource", radice).catch(() => []);
+        const p = await L.pagina("wikisource", cap[0] || radice); const fr = p ? frasiDa(p.testo, 200) : [];
+        let d = null; try { const [w] = await L.cerca("wikipedia", radice, 1); const pw = w && await L.pagina("wikipedia", w); d = pw ? definizione(frasiDa(pw.testo, 30), pw.titolo) : null; } catch (e){}
+        if (fr.length || d){
+          const nuove = await impara(fr, { argomento: radice, x: corto(d || fr[0]), fonte: "Wikisource", url: p && p.url });
+          S.mem.leggi = [...(S.mem.leggi || []).filter(x => x.titolo !== radice), { titolo: radice, t: now() }].slice(-10);   // stanotte continua proprio questo libro
+          fine();
+          await say(`ho cominciato a leggere «${radice.toLowerCase()}». ${d ? lowerFirst(corto(d)) : ""}${fr[0] ? ` comincia così: «${fr[0].slice(0, 140)}»` : ""}`.replace(/\s+/g, " ").trim(), { emo:"happy", raw:true, src:"studio",
+            cap:`fonte: Wikisource${d ? " e Wikipedia" : ""} · ${cap.length ? cap.length + " capitoli" : "un testo"} · ${fr.length} frasi nella sua rete${nuove ? ` · ${nuove} parole nuove` : ""} · stanotte va avanti` });
+          return; } }
+      modo = "argomento";
+    }
+    if (modo === "materia"){
+      for (const f of ["wikibooks", "wikiversita"]){
+        const [r] = await L.cerca(f, q, 1).catch(() => []); if (!r) continue;
+        const radice = r.split("/")[0], cap = await L.sottopagine(f, radice).catch(() => []), p = await L.pagina(f, radice).catch(() => null), fr = p ? frasiDa(p.testo, 80) : [];
+        if (!fr.length && !cap.length) continue;
+        const nuove = await impara(fr, fr.length ? { argomento: radice, x: corto(fr[0]), fonte: f === "wikibooks" ? "Wikibooks" : "Wikiversità", url: p && p.url } : null);
+        addStudy({ k:"argomento", x: q.toLowerCase() });   // il server segue il manuale capitolo dopo capitolo
+        fine();
+        await say(`ho trovato un manuale: «${radice.toLowerCase()}»${cap.length ? `, ${cap.length} capitoli` : ""}.${fr[0] ? " " + lowerFirst(corto(fr[0])) : ""} stanotte comincio a studiarlo`, { emo:"happy", raw:true, src:"studio", cap:`fonte: ${f === "wikibooks" ? "Wikibooks" : "Wikiversità"}${nuove ? ` · ${nuove} parole nuove` : ""}` });
+        return; }
+      modo = "argomento";
+    }
+    // argomento: Wikipedia + i fatti certi di Wikidata + una frase famosa da Wikiquote
     const [t] = await L.cerca("wikipedia", q, 1);
     const p = t && await L.pagina("wikipedia", t);
     if (p){ const fr = frasiDa(p.testo, 120), d = definizione(fr, p.titolo);
-      if (d) ris = { p, fr, d: d.length > 260 ? d.slice(0, 257).replace(/\s\S*$/, "") + "…" : d }; }
+      if (d){
+        let F2 = null; try { F2 = await L.fatti(p.titolo); } catch (e){}
+        let cit = null; try { cit = (await L.citazioni(p.titolo))[0] || null; } catch (e){}
+        const fattiFr = F2 && F2.fatti.length ? frasiDaFatti(p.titolo, F2) : [];
+        const nuove = await impara([...fr, ...fattiFr], { argomento: p.titolo, x: corto(d), fonte: "Wikipedia", url: p.url, fatti: F2 ? F2.fatti.slice(0, 8) : undefined });
+        if (cit) S.mem.citazioni = [...S.mem.citazioni, { ...cit, t: now(), argomento: p.titolo }].slice(-20);
+        fine();
+        const fonti = ["Wikipedia", F2 && F2.fatti.length ? "Wikidata" : null, cit ? "Wikiquote" : null].filter(Boolean);
+        await say(`ho letto «${p.titolo.toLowerCase()}». ${lowerFirst(corto(d))}`, { emo:"happy", raw:true, src:"studio",
+          cap: `fonti: ${fonti.join(", ")} · ${fr.length} frasi nella sua rete${nuove ? ` · ${nuove} parole nuove` : ""}${F2 && F2.fatti.length ? ` · ${F2.fatti.slice(0, 3).map(f => f.k + ": " + f.v).join(" · ")}` : ""} · stanotte approfondisce` });
+        if (cit) await say(`e qualcuno ha scritto: «${cit.x.length > 160 ? cit.x.slice(0, 158) + "…" : cit.x}»`, { emo:"curious", raw:true, src:"studio", cap: `${cit.autore ? cit.autore + " · " : ""}Wikiquote` });
+        addStudy({ k:"argomento", x:q, vivo: 1 });   // il server, di notte, segue i collegamenti
+        return; } }
   } catch (e){ console.warn("studio dal vivo", e && e.message); }
-  F.dream = 0; reading = false;
-  if (!ris){
-    // c'è solo in inglese? stanotte il server la traduce
-    let en = null; try { const L = lettore((u, o) => fetch(u, { signal: o && o.signal }), { pausa: 100, timeout: 10000 }); [en] = await L.cerca("inglese", q, 1); } catch (e){}
-    if (en){ addStudy({ k:"argomento", x:q }); await say(`su ${q} ho trovato solo una pagina in inglese, «${en.toLowerCase()}». stanotte la traduco e te la racconto`, { emo:"curious", raw:true, src:"studio", cap:"di notte, sul server, traduce dall'inglese e impara in italiano" }); return; }
-    addStudy({ k:"argomento", x:q }); await say(`non sono riuscito a leggere niente su ${q}. ci riprovo stanotte`, { emo:"sad", raw:true, src:"studio", cap:"forse sei offline, o Wikipedia non ha una voce con quel nome" }); return; }
-  const { p, fr, d } = ris, before = STUDIATE.length;
-  const r = await nucleo.leggi(fr); await lessico();
-  S.mem.scoperte.push({ t: now(), argomento: p.titolo, x: d, frasi: fr.filter(f => f !== d && f.length < 220).slice(0, 6), fonte: "Wikipedia", url: p.url, perche, detta: 1 }); if (S.mem.scoperte.length > 60) S.mem.scoperte.splice(0, S.mem.scoperte.length - 60);
-  save(); render(); ripple(.6, 55);
-  const nuove = Math.max(0, STUDIATE.length - before);
-  await say(`ho letto «${p.titolo.toLowerCase()}». ${lowerFirst(d)}`, { emo:"happy", raw:true, src:"studio",
-    cap: `fonte: Wikipedia · ${fr.length} frasi nella sua rete${nuove ? ` · ${nuove} parole nuove` : ""} · stanotte approfondisce` });
-  addStudy({ k:"argomento", x:q, vivo: 1 });   // il server, di notte, segue i collegamenti
+  fine();
+  // c'è solo in inglese? stanotte il server la traduce
+  let en = null; try { [en] = await L.cerca("inglese", q, 1); } catch (e){}
+  if (en){ addStudy({ k:"argomento", x:q }); await say(`su ${q} ho trovato solo una pagina in inglese, «${en.toLowerCase()}». stanotte la traduco e te la racconto`, { emo:"curious", raw:true, src:"studio", cap:"di notte, sul server, traduce dall'inglese e impara in italiano" }); return; }
+  addStudy({ k:"argomento", x:q }); await say(`non sono riuscito a leggere niente su ${q}. ci riprovo stanotte`, { emo:"sad", raw:true, src:"studio", cap:"forse sei offline, o non c'è una voce con quel nome" });
 }
 /* ================= MONDO =================
    meteo, luoghi, fatti certi, parole, notizie, citazioni, feed (mondo.js). Sempre in italiano, sempre con la fonte. */
@@ -1056,18 +1133,20 @@ $("#bar").addEventListener("submit", e=>{
         declared = { caught: !!(lastC && /come no|sul serio|ironi|scherz|bello eh/.test(lastC.x)) };
       }
     }
+    // gli insegni una parola (nucleo/lezioni.js): «X vuol dire …», «ti insegno una parola: X», «no, X è …», «X è come Y»…
+    const lez = !confirmed && !declared && phase() >= 2 ? Lezioni.lezione(msg, S.mem.ask && now() - S.mem.ask.t < 10*60e3 ? S.mem.ask.w : null) : null;
     // gli dici che non sai cosa vuol dire la parola che ha chiesto (o di cercarla): la cerca lui
-    const daCercare = !confirmed && !declared && phase() >= 3 && S.mem.ask && now() - S.mem.ask.t < 10*60e3 && /^(non lo so|boh|non saprei|non ne ho idea|non so|bho|cercal[ao]|cerca(?:lo)? tu|guarda(?:lo)? tu|vai a (?:vedere|cercare)|chiedi a google|dimmelo tu|scoprilo tu)\b/.test(a.low) ? S.mem.ask.w : null;
+    const daCercare = !lez && !confirmed && !declared && phase() >= 3 && S.mem.ask && now() - S.mem.ask.t < 10*60e3 && /^(non lo so|boh|non saprei|non ne ho idea|non so|bho|cercal[ao]|cerca(?:lo)? tu|guarda(?:lo)? tu|vai a (?:vedere|cercare)|chiedi a google|dimmelo tu|scoprilo tu)\b/.test(a.low) ? S.mem.ask.w : null;
     if (daCercare) S.mem.ask = null;
     // i conti: scritti a mano (nucleo/calcolo.js), la rete non li sa fare
-    const calcAns = !confirmed && !declared && !daCercare && phase() >= 3 ? calcola(msg) : null;
+    const calcAns = !lez && !confirmed && !declared && !daCercare && phase() >= 3 ? calcola(msg) : null;
     // domande sui SUOI gusti (nascono di notte dalle letture: nucleo/gusti.js)
-    const gustoAns = !confirmed && !declared && !calcAns && phase() >= 3 ? Gusti.rispondi(S.mem.gusti, msg, S.mem.gustoUltimo) : null;
+    const gustoAns = !lez && !confirmed && !declared && !calcAns && phase() >= 3 ? Gusti.rispondi(S.mem.gusti, msg, S.mem.gustoUltimo) : null;
     S.mem.gustoUltimo = gustoAns && gustoAns.ultimo || null;
-    const mondoIt = !confirmed && !declared && !calcAns && !gustoAns && phase() >= 3 ? Mondo.intento(msg) : null;
-    const studyAns = !confirmed && !declared && !calcAns && !gustoAns && !mondoIt && phase() >= 3 ? studyReply(msg, a) : null;
+    const mondoIt = !lez && !confirmed && !declared && !calcAns && !gustoAns && phase() >= 3 ? Mondo.intento(msg) : null;
+    const studyAns = !lez && !confirmed && !declared && !calcAns && !gustoAns && !mondoIt && phase() >= 3 ? studyReply(msg, a) : null;
     // una domanda di sapere senza altre risposte: cerca nei suoi appunti (nucleo/appunti.js)
-    const sapAns = !confirmed && !declared && !calcAns && !gustoAns && !mondoIt && !studyAns && phase() >= 3 && Appunti.domandaDiSapere(msg) ? await cercaAppunti(msg, 1.5) : null;
+    const sapAns = !lez && !confirmed && !declared && !calcAns && !gustoAns && !mondoIt && !studyAns && phase() >= 3 && Appunti.domandaDiSapere(msg) ? await cercaAppunti(msg, 1.5) : null;
     const newW = B.learn(S, msg, a, now()); updateTraits(a);
     // il suo stato interiore: gli hai parlato, magari con affetto o male; ha imparato parole nuove
     if (S.born){ evento("messaggio"); if (a.kind) evento("affetto"); if (a.praise) evento("lode"); if (a.insult) evento("offesa");
@@ -1086,12 +1165,13 @@ $("#bar").addEventListener("submit", e=>{
     if (hit){ oracleP = null; await revealOracle(); await say(phase()>=2 ? "lo sapevo" : "!", {emo:"happy", raw:true, cap:"sapeva cosa avresti scritto"}); }
     else if (declared){ oracleP = null; hideOracle();
       await say(declared.caught ? "ahah. l'avevo capito" : "ah! ci sono cascato. me lo segno", { emo: declared.caught ? "smirk" : "surprised", raw:true, src:"chiede", cap:"sta imparando quando sei ironico" }); }
+    else if (lez){ oracleP = null; hideOracle(); await insegnami(lez); }
     else if (daCercare){ oracleP = null; hideOracle(); await say(pick(["allora la cerco io","va bene, vado a cercarla","ok. la cerco da solo"]), { emo:"curious", raw:true, src:"studio", cap:`cerca «${daCercare}» sul Wikizionario…` }); await cercaParola(daCercare); }
     else if (calcAns){ oracleP = null; hideOracle(); await say(calcAns.x, { emo: "happy", raw:true, src:"studio", cap: calcAns.conto ? `${calcAns.conto} · l'ha calcolato lui, a mano` : "" }); }
     else if (sapAns){ oracleP = null; hideOracle(); citato(sapAns); await say(Appunti.frase(sapAns), { emo: "curious", raw:true, src:"studio", cap: capAppunti(sapAns) }); }
     else if (gustoAns){ oracleP = null; hideOracle(); await say(gustoAns.x, { emo: "happy", raw:true, src:"studio", cap: gustoAns.cap || "" }); }
     else if (mondoIt && await rispondiMondo(mondoIt)){ oracleP = null; hideOracle(); }
-    else if (studyAns && studyAns.live){ oracleP = null; hideOracle(); await liveStudy(studyAns.live, studyAns.perche); }
+    else if (studyAns && studyAns.live){ oracleP = null; hideOracle(); await liveStudy(studyAns.live, studyAns.perche, studyAns.modo); }
     else if (studyAns){ oracleP = null; hideOracle(); await say(studyAns.x, { emo: studyAns.emo || "curious", raw:true, src:"studio", cap: studyAns.cap || "" }); }
     else if (confirmed){ oracleP = null; hideOracle();
       const st = S.mem.ironyStats, accTxt = st && st.hist.length >= 3 ? ` · indovina il tuo tono ${Math.round(st.hist.reduce((x,y)=>x+y,0)/st.hist.length*100)}% delle volte` : "";
@@ -1184,6 +1264,7 @@ async function showWords(){
   openSheet("parole", `<p class="muted lead">ogni punto è una parola. le ha messe lui nello spazio: quelle vicine, per lui, vogliono dire cose simili. nessuno gliel'ha detto.</p>
     <div class="hud">${tile("tue", ws.length, { sub: "gliele hai insegnate tu", frac: Math.min(1, ws.length/200) })}${tile("dai libri", lib.length, { sub: lib.length ? "imparate studiando da solo" : "studia mentre dorme, dalla fase «frase»", frac: Math.min(1, lib.length/3000), rosso: true })}
     ${tile("sa cosa vogliono dire", defs, { sub: "gliele hai spiegate" })}${tile("la più usata", esc(ws[0] || "—"), { sub: ws[0] ? `${S.words[ws[0]].c} volte` : "" })}</div>
+    ${(S.mem.insegnate || []).length ? `${titolo("me le hai insegnate tu", S.mem.insegnate.length + "")}${S.mem.insegnate.slice().reverse().slice(0, 30).map(i => `<div class="row"><span>${esc(i.w)}</span><span class="muted" style="text-align:right;font-size:11px">${esc(i.x)}</span></div>`).join("")}<p class="muted" style="margin:6px 0 12px;font-size:11px">per insegnargliene una: «zibaldone vuol dire …», «ti insegno una parola: …», «felice è come contento», «il contrario di caldo è freddo». per correggerlo: «no, … vuol dire …»</p>` : `<p class="muted" style="margin:10px 0">per insegnargli una parola: «zibaldone vuol dire …» o «ti insegno una parola: …»</p>`}
     ${titolo("lo spazio dei significati", "tocca una parola")}
     <div class="viz"><canvas id="galaxy"></canvas></div>
     <div class="winfo muted" id="wInfo">● tue · ○ dai libri</div>
