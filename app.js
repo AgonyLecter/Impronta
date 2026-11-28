@@ -6,6 +6,7 @@ import { impacchetta, spacchetta } from "./nucleo/pacco.js";
 import { cervello, galassia, puntini, tile, segmenti, titolo } from "./hud.js";
 import { lettore, frasi as frasiDa, definizione } from "./nucleo/studio.js";
 import * as Mondo from "./mondo.js";
+import * as Gusti from "./nucleo/gusti.js";
 const { PHASES, LIMITS, ENERGY, NEED, HOUR, DAY, DAYS, G, STOP, START } = B;
 
 /* ================= CONFIG ================= */
@@ -47,7 +48,7 @@ function blank(id){ return { v:2, id, born:0, name:"", userName:"", firstWord:""
   phase:3, words:{}, phrases:{}, quotes:[], likes:[], dislikes:[], defs:{}, self:{is:[],likes:[]}, facts:{},
   traits:{calore:0,ironia:0,curiosita:0,coraggio:0,calma:0,malinconia:0},
   user:{msgs:0,chars:0,emoji:{},emojiMsgs:0,lower:0,excl:0,dot:0,abbr:{},hours:Array(24).fill(0),firstLens:[],lens:[],typing:{n:0,cps:0,del:0}},
-  mem:{feel:[],events:[],people:{},topics:{},corpus:[],ask:null,openers:[],react:{},reward:{},labels:[],mood:[],pendingQ:null,confirm:null,ironyLex:{},ironyStats:{asked:0,hist:[]},studia:[],scoperte:[],studio:null,notizie:[],citazioni:[],feed:[],luogo:null,traduttore:null},
+  mem:{feel:[],events:[],people:{},topics:{},corpus:[],ask:null,openers:[],react:{},reward:{},labels:[],mood:[],pendingQ:null,confirm:null,ironyLex:{},ironyStats:{asked:0,hist:[]},studia:[],scoperte:[],studio:null,notizie:[],citazioni:[],feed:[],luogo:null,traduttore:null,gusti:null,gustoUltimo:null},
   log:[], diary:[], diaryUnread:0, glyphs:[], revealed:true,
   energy:{used:0,sleepUntil:0}, lastSeen:0, sessions:0, sparks:{}, hurt:0, promise:0, litSeen:0, sound:true, netSync:0, netUp:0, updatedAt:0 }; }
 const arr = v => Array.isArray(v) ? v : v ? Object.values(v) : [];
@@ -963,8 +964,11 @@ $("#bar").addEventListener("submit", e=>{
         declared = { caught: !!(lastC && /come no|sul serio|ironi|scherz|bello eh/.test(lastC.x)) };
       }
     }
-    const mondoIt = !confirmed && !declared && phase() >= 3 ? Mondo.intento(msg) : null;
-    const studyAns = !confirmed && !declared && !mondoIt && phase() >= 3 ? studyReply(msg, a) : null;
+    // domande sui SUOI gusti (nascono di notte dalle letture: nucleo/gusti.js)
+    const gustoAns = !confirmed && !declared && phase() >= 3 ? Gusti.rispondi(S.mem.gusti, msg, S.mem.gustoUltimo) : null;
+    S.mem.gustoUltimo = gustoAns && gustoAns.ultimo || null;
+    const mondoIt = !confirmed && !declared && !gustoAns && phase() >= 3 ? Mondo.intento(msg) : null;
+    const studyAns = !confirmed && !declared && !gustoAns && !mondoIt && phase() >= 3 ? studyReply(msg, a) : null;
     const newW = B.learn(S, msg, a, now()); updateTraits(a);
     // etichette automatiche (emoji, segnali) e ricordo dell'umore per capire il carattere
     const lab = etichetta(msg, a, AFFETTI);
@@ -976,6 +980,7 @@ $("#bar").addEventListener("submit", e=>{
     if (hit){ oracleP = null; await revealOracle(); await say(phase()>=2 ? "lo sapevo" : "!", {emo:"happy", raw:true, cap:"sapeva cosa avresti scritto"}); }
     else if (declared){ oracleP = null; hideOracle();
       await say(declared.caught ? "ahah. l'avevo capito" : "ah! ci sono cascato. me lo segno", { emo: declared.caught ? "smirk" : "surprised", raw:true, src:"chiede", cap:"sta imparando quando sei ironico" }); }
+    else if (gustoAns){ oracleP = null; hideOracle(); await say(gustoAns.x, { emo: "happy", raw:true, src:"studio", cap: gustoAns.cap || "" }); }
     else if (mondoIt && await rispondiMondo(mondoIt)){ oracleP = null; hideOracle(); }
     else if (studyAns && studyAns.live){ oracleP = null; hideOracle(); await liveStudy(studyAns.live, studyAns.perche); }
     else if (studyAns){ oracleP = null; hideOracle(); await say(studyAns.x, { emo: studyAns.emo || "curious", raw:true, src:"studio", cap: studyAns.cap || "" }); }
@@ -1127,8 +1132,8 @@ async function showMind(){
     <div class="row"><span>qui</span><span>${nucleo.mode}${nucleo.grande ? " · solo per usarla" : ""}</span></div>
     <div class="row"><span>ad app chiusa</span><span>${S.energy.srv ? `${dstr(S.energy.srv.t)} · ${hhmm(S.energy.srv.t)} · +${compact(S.energy.srv.steps)} passi` : S.netUp ? "affidata al server" : "non ancora"}</span></div>
     ${phase()<3 ? `<p class="muted" style="margin-top:14px">la userà per parlare dalla fase «frase». intanto ascolta e impara a sentire.</p>` : ""}
-    <button class="btn" id="mChar">come ti vede</button><button class="btn" id="mLog">ricordi</button>`);
-  $("#mLog").onclick = showLog; $("#mChar").onclick = showCarattere;
+    <button class="btn" id="mChar">come ti vede</button><button class="btn" id="mGusti">i suoi gusti</button><button class="btn" id="mLog">ricordi</button>`);
+  $("#mLog").onclick = showLog; $("#mChar").onclick = showCarattere; $("#mGusti").onclick = showGusti;
   const hs = i.hist ? i.hist.filter(h => h.capisce != null) : [];
   const marks = []; hs.forEach((h, k) => { if (k && (h.H > hs[k-1].H || (h.L || 1) > (hs[k-1].L || 1))) marks.push(k); });
   const sp = $("#spark"); if (sp) puntini(sp, hs.map(h => h.capisce), { segni: marks });
@@ -1138,6 +1143,22 @@ async function showMind(){
   const g = S.sparks.lastGrow, recent = g && Date.now() - g.t < 3*DAY && g.to === con.H;
   const nati = recent ? Array.from({ length: con.L }, () => g.from) : null;
   vizStop.push(cervello(c, { con, act: act && act.words.length > 1 ? act : null, nati }));
+}
+function showGusti(){
+  const G = S.mem.gusti, NOMI = { temi: "argomenti", materie: "materie", autori: "autori", libri: "libri" };
+  const W = Gusti.gradite(S.traits), prova = AFFETTI.map((k, i) => [k, W[i]]).sort((x, y) => y[1] - x[1]);
+  const lead = `<p class="muted lead">nessuno gliel'ha detto: i gusti gli vengono di notte, da quello che legge. misura con la sua rete quanto un testo lo sorprende, quanto ne impara e come lo fa sentire, e lo pesa con il suo carattere. cambia idea piano, e non sempre è d'accordo con te.</p>`;
+  const carattere = `${titolo("cosa gli piace provare", "dal suo carattere")}<div class="chips">${prova.slice(0, 3).map(([k]) => `<span class="hot">${esc(k)}</span>`).join("")}${prova.slice(-2).map(([k]) => `<span>${esc(k)}<small>poco</small></span>`).join("")}</div>`;
+  if (!G || !Gusti.TIPI.some(t => Object.keys(G[t] || {}).length)){ openSheet("i suoi gusti", lead + carattere + `<p class="muted" style="margin-top:14px">ancora nessuno: nasceranno dalle prossime notti di studio.</p>`); return; }
+  const blocchi = Gusti.TIPI.filter(t => Object.keys(G[t] || {}).length).map(t => { const pref = (G.preferiti || {})[t], L = Gusti.classifica(G, t).slice(0, 6);
+    return `${titolo(NOMI[t], pref ? "preferito: " + esc(pref) : "")}${L.map(o => `<div class="prog"><span class="ell">${esc(o.nome)}</span>${segmenti(clamp(o.p + .2, 0, 1), 14, o.nome === pref)}<small>${o.p.toFixed(2)}</small></div><p class="muted" style="font-size:11px;margin:-4px 0 10px">${esc(Gusti.perche(o))}</p>`).join("")}`; }).join("");
+  const cambi = (G.storia || []).filter(c => c.prima).slice(-4).reverse();
+  const parole = Object.entries(G.parole || {}).slice(0, 12);
+  openSheet("i suoi gusti", lead + `<div class="hud">${tile("notti di gusti", G.notti || 0, { sub: "ogni notte li ripesa" })}${tile("ha cambiato idea", cambi.length, { sub: cambi[0] ? `l'ultima: ${esc(cambi[0].nuovo)}` : "non ancora", rosso: true })}</div>`
+    + blocchi + carattere
+    + (cambi.length ? `${titolo("ha cambiato idea")}${cambi.map(c => `<div class="row"><span>${esc(c.prima)} → <b>${esc(c.nuovo)}</b></span><span>${dstr(c.t)}</span></div>`).join("")}` : "")
+    + (parole.length ? `${titolo("le sue parole", "tra i sinonimi")}<div class="chips">${parole.map(([, v]) => `<span class="hot">${esc(v.w)}<small>${esc(v.tra.filter(w => w !== v.w).slice(0, 2).join(", "))}</small></span>`).join("")}</div>` : "")
+    + `<p class="muted" style="margin-top:12px">chiedigli «qual è il tuo libro preferito?», «chi preferisci tra … e …?», poi «perché?»</p>`);
 }
 function showCarattere(){
   const C = analizza(S);
