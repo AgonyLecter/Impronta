@@ -22,22 +22,17 @@ scrive «controlla»: si lancia il workflow `sogni` a mano e si legge il registr
 
 ## DA FARE, in ordine
 
-### 1. Traduttore libero: OPUS-MT al posto di Argos — FATTO nel codice, da vedere nel primo giro vero
-Argos rifiutava i download automatici (403), quindi ora si usa OPUS-MT `Helsinki-NLP/opus-mt-en-it` (Hugging Face).
-- Workflow: se manca `~/.impronta/opus/model.bin`, installa `torch` CPU + `transformers` e lancia
-  `tools/traduci.py --scarica` (converte con `ct2-transformers-converter`, int8, copia `source.spm`/`target.spm`);
-  poi la cartella resta in cache e bastano `ctranslate2` + `sentencepiece`.
-- `tools/traduci.py`: pezzi SentencePiece + `"</s>"`, `translate_batch`, decodifica con `target.spm`.
-  Un vecchio modello Argos in cache resta come riserva; se non c'è niente risponde null come prima.
-- Provato qui solo il collegamento (SentencePiece vero + CTranslate2 finto): Hugging Face e pytorch.org
-  sono bloccati dall'ambiente cloud. **Da controllare nel registro**: la riga
-  `traduttore libero: pronto («The sea is blue.» → «…»)`. Il primo giro dura qualche minuto in più.
+### 1. Traduttore libero OPUS-MT — FATTO e verificato (giro del 28/11, 04:09)
+Modello convertito in ~50 s e in cache (`~/.impronta/opus`); registro:
+`traduttore libero: pronto («The sea is blue.» → «Il mare è blu.»)`, suo traduttore 15% contro 56% del libero.
+Dettagli in `tools/traduci.py` e nel workflow.
 
-### 2. Il giro orario di GitHub non parte
-Da quando è stato pubblicato il workflow (`cron: "23 * * * *"`) è partito una sola volta in automatico;
-gli altri giri sono stati lanciati a mano. Controllare con `actions_list` (list_workflow_runs su `sogni.yml`).
-Se continua: proporre all'utente un servizio esterno gratuito (es. cron-job.org) che chiama l'API
-`workflow_dispatch` con un token GitHub dedicato e minimo (serve il suo consenso: è una credenziale).
+### 2. Il giro orario di GitHub non parte → sveglia esterna (cron-job.org), IN CORSO
+Il `cron: "23 * * * *"` è partito in automatico una sola volta (00:06 del 28/11), poi più niente.
+Soluzione scelta con l'utente: cron-job.org chiama ogni ora l'API `workflow_dispatch` con un token
+fine-grained dedicato (solo Impronta, solo Actions). Passi in `docs/PIANO-SOGNI-GITHUB.md`, punto 5.
+Il token lo crea e lo tiene l'utente: non chiederlo in chat. Verifica: `actions_list` list_workflow_runs su
+`sogni.yml` → giri `workflow_dispatch` ogni ora verso il minuto 53 senza che nessuno li lanci.
 
 ### 3. Da verificare al primo giro con il compagno addormentato
 Mai visti dal vivo (bloccati nell'ambiente cloud, provati solo con dati simulati):
