@@ -77,11 +77,21 @@ function numero(t){
 export function ordina(titoli){ return [...titoli].sort((a, b) => { const x = numero(a), y = numero(b); return x != null && y != null && x !== y ? x - y : a.localeCompare(b, "it"); }); }
 
 /* ---------- il lettore (API MediaWiki, uguale per tutte le fonti Wikimedia) ---------- */
-export function lettore(fetch, { timeout = 15000 } = {}){
+export function lettore(fetch, { timeout = 15000, pausa = 700, attesa = ms => new Promise(r => setTimeout(r, ms)) } = {}){
+  // educato con Wikipedia: una richiesta alla volta, con una pausa; se dice "troppe richieste" (429) aspetta e riprova
+  let ultima = 0;
   async function get(url){
-    const ac = typeof AbortController !== "undefined" ? new AbortController() : null, tm = ac ? setTimeout(() => ac.abort(), timeout) : 0;
-    try { const r = await fetch(url, { headers: { "User-Agent": UA, "Api-User-Agent": UA }, signal: ac && ac.signal }); if (!r.ok) throw new Error("HTTP " + r.status); return r; }
-    finally { clearTimeout(tm); }
+    for (let prova = 0; ; prova++){
+      const gap = ultima + pausa - Date.now(); if (gap > 0) await attesa(gap); ultima = Date.now();
+      const ac = typeof AbortController !== "undefined" ? new AbortController() : null, tm = ac ? setTimeout(() => ac.abort(), timeout) : 0;
+      let r; try { r = await fetch(url, { headers: { "User-Agent": UA, "Api-User-Agent": UA }, signal: ac && ac.signal }); } finally { clearTimeout(tm); }
+      if (r.ok) return r;
+      if ((r.status === 429 || r.status === 503) && prova < 3){
+        const ra = r.headers && r.headers.get && +r.headers.get("retry-after");
+        await attesa(Math.min(20000, (ra > 0 ? ra*1000 : 0) || 2500*Math.pow(2, prova))); continue;
+      }
+      throw new Error("HTTP " + r.status);
+    }
   }
   async function api(fonte, q){
     const u = new URL(`https://${FONTI[fonte].host}/w/api.php`);
@@ -126,9 +136,14 @@ export function lettore(fetch, { timeout = 15000 } = {}){
 /* ---------- curiosità: cosa studiare stanotte ---------- */
 export function nuovoStato(){ return { visti: {}, coda: [], materie: {}, materia: 0, libro: null, classico: 0, pagine: 0, frasi: 0, storia: [] }; }
 export const VAGHE = new Set(["qualcosa","qualcosina","tutto","cose","roba","altro","niente","nulla","quello","questo","ciò","di più"]);
+/* parole da chat, non argomenti: comandi, lodi, saluti, verbi e avverbi */
+const NON_ARGOMENTI = new Set("studia studiare studiato impara imparare imparato leggi leggere cerca cercare dimmi parlami scrivi guarda ascolta senti bravo brava bravissimo bravissima grazie ciao buongiorno buonanotte buonasera scusa allora quindi però perché davvero sempre spesso mai magari forse proprio tanto troppo bene male niente nulla qualcosa sicuro certo okay dai vabbè".split(" "));
+const argomento = w => !NON_ARGOMENTI.has(w) && !/(ando|endo|mente|issimo|issima|issimi|iamo)$/.test(w) && !(w.length >= 7 && /(are|ere|ire)$/.test(w));
 function paroleTue(S){
   const nomi = new Set([S.name, S.userName].filter(Boolean).map(x => String(x).toLowerCase()));
   return Object.entries(S.words || {}).filter(([w, v]) => w.length > 3 && !STOP.has(w) && !nomi.has(w) && !/^(https?|www|com)$/.test(w) && v && v.c >= 2).sort((a, b) => b[1].c - a[1].c).map(([w]) => w);
+}
+function argomentiTuoi(S){ return paroleTue(S).filter(argomento);
 }
 export function scegli(S, st, { max = 6 } = {}){
   const jobs = [], visto = k => !!st.visti[k], add = j => { if (jobs.length < max && !jobs.some(x => x.k === j.k) && !visto(j.k)) jobs.push(j); };
@@ -138,7 +153,7 @@ export function scegli(S, st, { max = 6 } = {}){
     else add({ k: chiave("wikipedia", r.x), tipo: "argomento", fonte: "wikipedia", q: r.x, perche: "me l'hai chiesto tu", richiesta: r.x, materia: MATERIE.includes(String(r.x).toLowerCase()) ? String(r.x).toLowerCase() : null });
   }
   // 2. di cosa parli
-  const tue = paroleTue(S);
+  const tue = argomentiTuoi(S);
   for (const w of tue.slice(0, 30)){ if (jobs.length >= Math.ceil(max/2)) break; add({ k: chiave("wikipedia", w), tipo: "argomento", fonte: "wikipedia", q: w, perche: "ne parli spesso" }); }
   // 3. parole che usi e non sa spiegare
   const defs = (S.defs) || {};
@@ -154,9 +169,9 @@ export function scegli(S, st, { max = 6 } = {}){
 }
 
 /* ---------- studiare ---------- */
-export async function studia({ fetch, S, stato, budgetMs = 45000, maxPagine = 8, ora = Date.now, log = () => {} }){
+export async function studia({ fetch, S, stato, budgetMs = 45000, maxPagine = 8, ora = Date.now, log = () => {}, pausa = 700 }){
   const st = Object.assign(nuovoStato(), stato || {}); st.visti = st.visti || {}; st.coda = arr(st.coda); st.storia = arr(st.storia);
-  const L = lettore(fetch), t0 = ora(), letture = [], scoperte = [], fatte = [];
+  const L = lettore(fetch, { pausa }), t0 = ora(), letture = [], scoperte = [], fatte = [];
   const tempo = () => ora() - t0 < budgetMs;
   const impara = (pag, fonte, job, { tante = 120, scoperta = true } = {}) => {
     const fr = frasi(pag.testo, tante); if (!fr.length) return 0;
