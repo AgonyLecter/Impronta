@@ -7,7 +7,9 @@ export const PHASES = ["seme","eco","parola","frase","voce"];
 export const LIMITS = [40,60,100,160,220];      // caratteri che capisce in input
 export const OUTMAX = [0,24,40,90,150];         // lunghezza massima delle sue frasi
 export const ENERGY = [12,18,26,34,44];
-export const NEED = [[0,0],[5,0],[22,2],[60,5],[130,12]]; // parole contenuto, giorni
+export const NEED = [[0,0],[5,0],[22,2],[0,0],[80,3]]; // parole contenuto, giorni
+/* nasce già in fase «frase»: parla, ha la sua rete, studia. Le fasi seme/eco/parola restano solo per i compagni nati prima */
+export const START = 3;
 export const HOUR = 3600e3, DAY = 86400e3;
 export const DAYS = ["domenica","lunedì","martedì","mercoledì","giovedì","venerdì","sabato"];
 
@@ -251,6 +253,11 @@ function ensure(S){ S.mem ||= {}; S.mem.react ||= {}; S.mem.reward ||= {}; S.mem
 export function learn(S, msg, a, t){
   ensure(S);
   const newW = [], M0 = S.mem;
+  // gli articoli che usi tu ("il mare", "la musica"): così non sbaglia
+  const AR = M0.art || (M0.art = {});
+  for (const m of (a.low || "").matchAll(/(?:^|[^a-zà-ù'])(il|lo|la|i|gli|le|l')\s?([a-zà-ù]{3,})/g)) if (!STOP.has(m[2])) AR[m[2]] = m[1];
+  { const ks = Object.keys(AR); if (ks.length > 600) for (const k of ks.slice(0, ks.length - 600)) delete AR[k]; }
+  ART = AR;
   // risposta a una domanda che aveva fatto lui ("come si chiama il tuo cane?" → "rex")
   if (M0.pendingQ && !a.q && !a.teach && t - M0.pendingQ.t < 10*60e3 && a.toks.length <= 8){
     let v = a.low.replace(/^(?:si chiama|si chiamano|è|e|sono|ho|abito a|abito in|vivo a|vivo in|studio|faccio)\s+/, "").replace(/ anni$/, "");
@@ -360,6 +367,7 @@ let STUDIATE = new Set();
 export function setStudiate(ws){ STUDIATE = ws instanceof Set ? ws : new Set(ws || []); }
 export const studiata = w => STUDIATE.has(w);
 export function makeCtx(S, phase, now, rnd){
+  ART = (S.mem && S.mem.art) || {};
   const inn = innate(phase);
   const knows = w => !!S.words[w] || inn.has(w) || /^\d+$/.test(w) || (phase >= 3 && STUDIATE.has(w));
   const contentWords = (min=1) => Object.keys(S.words).filter(w=>!STOP.has(w) && w.length>2 && S.words[w].c>=min);
@@ -380,9 +388,16 @@ function salient(ctx, a){
   xs.sort((p,q)=>q.k-p.k); return xs.map(x=>x.w);
 }
 function sentOf(w){ const st = deacc(w); for (const k in SENT) if (SENT[k] && st.startsWith(k)) return SENT[k]; return 0; }
+/* l'articolo giusto: prima quello che usi tu con quella parola, poi le regole (con i nomi in -e che le regole sbagliano) */
+let ART = {};
+const MASC_E = new Set("mare sole cane pane fiume mese nome fiore cuore amore latte ponte monte dente sangue pesce padre frate re piede bicchiere carattere sapone cognome colore dolce mestiere giornale animale ospedale natale ristorante studente cantante presidente cliente insegnante paese pallone mattone telefono".split(" "));
+const FEM_E = new Set("notte chiave gente arte nave neve voce luce fame sete carne classe madre pelle mente parte morte fine sera estate canzone lezione stazione televisione ragione regione nazione tradizione".split(" "));
 export function withArt(w){
   if (!w || w.includes(" ")) return w;
+  if (ART[w]) return ART[w] === "l'" ? "l'"+w : ART[w]+" "+w;
   if (/^[aeiouàèéìòù]/.test(w)) return "l'"+w;
+  if (FEM_E.has(w) || /(ione|zione)$/.test(w)) return "la "+w;
+  if (MASC_E.has(w)) return (/^(s[^aeiou]|z|gn|ps)/.test(w) ? "lo " : "il ")+w;
   if (/^(s[^aeiou]|z|gn|ps|x|y)/.test(w)) return (/[ie]$/.test(w)?"gli ":"lo ")+w;
   if (/a$/.test(w)) return "la "+w;
   if (/e$/.test(w) && !/(ore|ale|ile|ente|one)$/.test(w)) return "le "+w;
