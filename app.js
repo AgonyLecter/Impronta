@@ -4,7 +4,7 @@ import { Ritmo, liveRead, prophecy, prophecyHit } from "./senso.js";
 import { Nucleo, AFFETTI, etichetta, conferma, registra, analizza } from "./nucleo/index.js";
 import { impacchetta, spacchetta } from "./nucleo/pacco.js";
 import { cervello, cuore, galassia, puntini, tile, segmenti, titolo } from "./hud.js";
-import { lettore, frasi as frasiDa, definizione, FEED } from "./nucleo/studio.js";
+import { lettore, frasi as frasiDa, definizione, FEED, dizionario as dizionarioDa } from "./nucleo/studio.js";
 import * as Mondo from "./mondo.js";
 import * as Gusti from "./nucleo/gusti.js";
 import { calcola } from "./nucleo/calcolo.js";
@@ -50,7 +50,7 @@ function blank(id){ return { v:2, id, born:0, name:"", userName:"", firstWord:""
   phase:3, words:{}, phrases:{}, quotes:[], likes:[], dislikes:[], defs:{}, self:{is:[],likes:[]}, facts:{},
   traits:{calore:0,ironia:0,curiosita:0,coraggio:0,calma:0,malinconia:0},
   user:{msgs:0,chars:0,emoji:{},emojiMsgs:0,lower:0,excl:0,dot:0,abbr:{},hours:Array(24).fill(0),firstLens:[],lens:[],typing:{n:0,cps:0,del:0}},
-  mem:{feel:[],events:[],people:{},topics:{},corpus:[],ask:null,openers:[],react:{},reward:{},labels:[],mood:[],pendingQ:null,confirm:null,ironyLex:{},ironyStats:{asked:0,hist:[]},studia:[],scoperte:[],studio:null,notizie:[],citazioni:[],feed:[],luogo:null,traduttore:null,gusti:null,gustoUltimo:null,citati:[],ultimoAppunto:null},
+  mem:{feel:[],events:[],people:{},topics:{},corpus:[],ask:null,openers:[],react:{},reward:{},labels:[],mood:[],pendingQ:null,confirm:null,ironyLex:{},ironyStats:{asked:0,hist:[]},studia:[],scoperte:[],studio:null,notizie:[],citazioni:[],feed:[],luogo:null,traduttore:null,gusti:null,gustoUltimo:null,citati:[],ultimoAppunto:null,imparate:[],defFonte:{}},
   log:[], diary:[], diaryUnread:0, glyphs:[], revealed:true,
   energy:{used:0,sleepUntil:0}, lastSeen:0, sessions:0, sparks:{}, hurt:0, promise:0, litSeen:0, sound:true, netSync:0, netUp:0, updatedAt:0 }; }
 const arr = v => Array.isArray(v) ? v : v ? Object.values(v) : [];
@@ -61,7 +61,7 @@ function normalize(s, id){
   for (const k of ["hours","firstLens","lens"]) o.user[k] = arr(o.user[k]);
   if (o.user.hours.length < 24) o.user.hours = Array(24).fill(0).map((_,i)=>o.user.hours[i]||0);
   o.user.typing = Object.assign({n:0,cps:0,del:0}, o.user.typing||{});
-  for (const k of ["feel","events","corpus","openers","labels","mood","studia","scoperte","notizie","citazioni","feed","citati"]) o.mem[k] = arr(o.mem[k]);
+  for (const k of ["feel","events","corpus","openers","labels","mood","studia","scoperte","notizie","citazioni","feed","citati","imparate"]) o.mem[k] = arr(o.mem[k]);
   // pulizia: i link finiti tra le frasi e le parole, e le "scoperte" di pagine di Google
   o.mem.corpus = o.mem.corpus.filter(l => !/\b(https?|www)\b/.test(l));
   for (const w of ["https","http","www"]) delete (o.words||{})[w];
@@ -328,7 +328,7 @@ function render(){
 function updCount(){ const l=inp.value.length, m=inp.maxLength; $("#cnt").textContent = S.born && !isAsleep() && l ? `${l}/${m}` : ""; $("#cnt").classList.toggle("full", l>=m); }
 let busy = false, chain = Promise.resolve(), pending = 0;
 const queue = fn => { pending++; return (chain = chain.then(fn).catch(e=>console.error(e)).finally(()=>pending--)); };
-window.__impronta = { get idle(){ return !busy && pending === 0; }, nucleo }; // usato dai test automatici
+window.__impronta = { get idle(){ return !busy && pending === 0; }, nucleo, get S(){ return S; } }; // usato dai test automatici
 
 /* scrive lettera per lettera, con la bocca che segue le vocali */
 async function typeOut(text){
@@ -396,6 +396,10 @@ let sessionMsgs = 0; const sessionSense = {};
 async function respond(msg, a, sense, feel){
   const p = phase();
   let net = null, insight = null;
+  // aveva chiesto cosa vuol dire una parola e tu hai parlato d'altro: la cerca da solo (e te lo dirà dopo)
+  const chiesta = S.mem.ask && now() - S.mem.ask.t < 10*60e3 ? S.mem.ask.w : null;
+  // una parola nuova: prima prova a capirla da solo (il suo dizionario); se la capisce non te lo chiede
+  const capita = p >= 3 ? await capisciNuove(a) : null;
   if (p >= 3 && sessionMsgs >= 3 && rnd() < .12){
     const C = analizza(S); insight = (C.insights || []).find(i => !S.sparks["ins_"+i.x]) || null;
   }
@@ -412,9 +416,14 @@ async function respond(msg, a, sense, feel){
   const r = await B.reply(S, a, { phase:p, now:now(), rnd, net, feel, insight, mood, sense:{ ...sense, used:sessionSense, msgN:sessionMsgs } });
   const set = r.set || {};
   let cap = r.cap || "";
-  if (set.def){ S.defs[set.def.w] = set.def.x; S.mem.ask = null; const W = S.words[set.def.w]; if (W) W.val = B.analyze(set.def.x).sv; }
+  if (set.def){ S.defs[set.def.w] = set.def.x; S.mem.defFonte = { ...(S.mem.defFonte || {}), [set.def.w]: "me l'hai insegnato tu" }; S.mem.ask = null; const W = S.words[set.def.w]; if (W) W.val = B.analyze(set.def.x).sv; }
   else if (set.ask) S.mem.ask = { w:set.ask, t:now() };
   else S.mem.ask = null;
+  if (chiesta && !set.def && !S.defs[chiesta] && !(set.ask === chiesta)) cercaParola(chiesta, { zitto: true });   // non me l'hai spiegata: la cerco io
+  // usa davvero le sue parole preferite (tra i sinonimi), nelle frasi sue
+  if (p >= 3 && S.mem.gusti && S.mem.gusti.parole && ["tpl","refl","rete","voce","mem"].includes(r.src)){
+    const P = Gusti.applicaParole(r.x, S.mem.gusti.parole);
+    if (P.cambi.length){ r.x = P.x; const [da, aa] = P.cambi[0]; if (!S.sparks["par_" + da]){ S.sparks["par_" + da] = 1; cap = cap || `dice «${aa}» invece di «${da}»: è la sua parola, la preferisce`; } } }
   if (set.sense) sessionSense[set.sense] = 1;
   if (set.askName) S.awaitUserName = 1;
   if (set.pendingQ) S.mem.pendingQ = { ...set.pendingQ, t: now() };
@@ -426,6 +435,8 @@ async function respond(msg, a, sense, feel){
     else if (!cap && rnd() < .25) cap = "questa frase non l'hai mai scritta tu"; }
   if (r.src === "senso" && a.irony && !S.sparks.ironyCap){ S.sparks.ironyCap = 1; cap = "ha capito che era ironia"; }
   await say(r.x, { glyph:r.glyph, emo:r.emo, raw:r.raw, cap, src:r.src });
+  // ha capito da solo una parola nuova: te lo dice (puoi correggerlo)
+  if (capita && !set.ask && r.src !== "def" && rnd() < .7){ await say(`${capita.w}... ${capita.def}, giusto? me lo segno`, { emo:"curious", raw:true, src:"studio", cap:`l'ha capita da solo (${capita.fonte}) · se sbaglia: «${capita.w} è …»` }); S.mem.ask = { w: capita.w, t: now(), verifica: 1 }; }
   // se non è sicuro di cosa provi, te lo chiede: la tua risposta diventa una lezione
   if (feel && feel._incerto && p >= 3 && ["tristezza","rabbia","paura"].includes(feel._top) && !a.q && !a.ask && (a.sv < 0 || a.emojis.length) && !S.mem.confirm && rnd() < .35 && r.src !== "senso" && S.user.msgs - (S.mem.lastAskMsg ?? -99) >= 3){
     S.mem.lastAskMsg = S.user.msgs;
@@ -595,12 +606,57 @@ function findDiscovery(q){
 }
 /* i suoi appunti: tutto ciò che ha letto. La sua rete allarga la ricerca alle parole vicine di significato */
 async function cercaAppunti(msg, minimo){
-  const Q = Appunti.quaderno(S.mem); if (!Q.length) return null;
+  const Q = Appunti.quaderno(S.mem, S.defs); if (!Q.length) return null;
   const vicine = {};
   if (nucleo.ready){ const tra = Appunti.lessicoQuaderno(Q).slice(0, 1500);
     for (const w of Appunti.chiave(msg).slice(0, 4)){ try { vicine[w] = await mente.near(w, tra); } catch (e){} } }
   const h = Appunti.cerca(Q, msg, { vicine, escludi: new Set(S.mem.citati || []) });
   return h && h.punteggio >= minimo ? h : null;
+}
+/* PAROLE NUOVE. Prima prova a capirle da solo (il suo dizionario, WordNet); se no te lo chiede;
+   se non gliela spieghi la cerca sul Wikizionario. Ciò che capisce se lo salva (S.defs) e lo riusa. */
+const forme = w => [...new Set([w, w.replace(/i$/, "o"), w.replace(/e$/, "a"), w.replace(/i$/, "e"), w.replace(/he$/, "a").replace(/hi$/, "o")])];
+async function capisciNuove(a){
+  const nuove = a.content.filter(w => S.words[w] && S.words[w].c <= 1 && !S.defs[w] && w.length >= 5 && !B.STOP.has(w) && !/(are|ere|ire|ato|ata|uto|ito|ando|endo|mente|issim)$/.test(w));
+  for (const w of nuove.slice(0, 2)){
+    let P = null; for (const f of forme(w)){ try { P = await Mondo.parola(fetch, f); } catch (e){ P = null; } if (P && (P.def || P.tipo.length)) break; P = null; }
+    if (!P) continue;
+    const def = P.def ? P.def.replace(/\.$/, "") : `un tipo di ${P.tipo[0]}`;
+    S.defs[w] = def; S.mem.defFonte = { ...(S.mem.defFonte || {}), [w]: "il suo dizionario (WordNet)" };
+    return { w, def: P.def ? `vuol dire ${def}` : `è ${def}`, fonte: "WordNet" };
+  }
+  return null;
+}
+async function cercaParola(w, { zitto = false } = {}){
+  let def = null, fonte = null;
+  try {
+    const L = lettore((u, o) => fetch(u, { signal: o && o.signal }), { pausa: 120, timeout: 10000 });
+    for (const f of forme(w)){ const p = await L.pagina("wikizionario", f).catch(() => null); const fr = p ? dizionarioDa(p.testo, f) : []; const d0 = fr.find(x => / significa /.test(x)); if (d0){ def = d0.replace(/^\S+ significa /, "").replace(/\.$/, ""); fonte = "Wikizionario"; break; } }
+    if (!def){ const [t] = await L.cerca("wikipedia", w, 1); const p = t && await L.pagina("wikipedia", t); const d = p && definizione(frasiDa(p.testo, 20), p.titolo); if (d){ def = d.replace(/\.$/, "").slice(0, 200); fonte = "Wikipedia"; } }
+  } catch (e){ console.warn("cerca parola", w, e && e.message); }
+  if (!def){ if (!zitto) await say(`non l'ho trovata. stanotte la cerco meglio`, { emo:"sad", raw:true, src:"studio", cap:"forse sei offline: di notte il server cerca le parole che usi e non sa" }); return null; }
+  S.defs[w] = def.length > 200 ? def.slice(0, 197).replace(/\s\S*$/, "") + "…" : def; S.mem.defFonte = { ...(S.mem.defFonte || {}), [w]: fonte };
+  if (zitto){ S.mem.imparate = [...(S.mem.imparate || []), { w, def: S.defs[w], fonte, t: now(), detta: 0 }].slice(-20); save(); return S.defs[w]; }
+  save(); await say(fonte === "Wikizionario" ? `ho trovato. ${w} vuol dire ${S.defs[w]}. me lo segno` : `ho trovato. ${lowerFirst(S.defs[w])}. me lo segno`, { emo:"happy", raw:true, src:"studio", cap:`fonte: ${fonte} · ora la sa, e la riusa` });
+  return S.defs[w];
+}
+/* TI INCALZA: quando stai zitto non dice solo «sei ancora lì?»: ti racconta, ti chiede, riprende il discorso */
+let incalzate = 0;
+async function incalza(){
+  const p = phase(), ctx = B.makeCtx(S, p, now(), rnd), idee = [];
+  const imp = (S.mem.imparate || []).find(x => !x.detta);
+  if (imp) idee.push(() => { imp.detta = 1; return { x: `prima non sapevo cosa vuol dire ${imp.w}. l'ho cercato da solo: ${imp.def}`, cap: `fonte: ${imp.fonte} · ora la sa` }; });
+  const recenti = S.log.filter(l => l.w === "u").slice(-12).map(l => l.x).join(" "), ignote = B.tokenize(recenti).filter(w => S.words[w] && !S.defs[w] && w.length >= 6 && !B.STOP.has(w) && !/(are|ere|ire|ato|ata|uto|ito|ando|endo|mente|issim)$/.test(w));
+  if (ignote.length) idee.push(() => { const w = ignote[Math.floor(rnd()*ignote.length)]; S.mem.ask = { w, t: now() }; return { x: `prima hai detto «${w}». cosa vuol dire?`, cap: "se non lo sai, digli «cercalo tu»", emo: "curious" }; });
+  const sc = S.mem.scoperte.slice().reverse().find(d => !d.detta);
+  if (sc) idee.push(() => { sc.detta = 1; return { x: `sai cosa ho scoperto? ${lowerFirst(sc.x)}`, cap: `fonte: ${sc.fonte}` }; });
+  const G = S.mem.gusti, pref = G && G.preferiti && (G.preferiti.libri || G.preferiti.temi || G.preferiti.autori);
+  if (pref) idee.push(() => { const t = G.preferiti.libri === pref ? "libri" : G.preferiti.temi === pref ? "temi" : "autori"; S.mem.gustoUltimo = { tipo: t, nome: pref };
+    return { x: `${pref.toLowerCase()} mi piace sempre di più. a te piace?`, cap: "i suoi gusti · chiedigli «perché?»", emo: "happy" }; });
+  const ultimo = S.log.filter(l => l.w === "u").slice(-1)[0], temi = ultimo ? B.tokenize(ultimo.x).filter(w => w.length > 4 && !B.STOP.has(w) && S.words[w]) : [];
+  if (temi.length) idee.push(async () => { const h = await cercaAppunti(temi.join(" "), 2); if (h){ citato(h); return { x: Appunti.frase(h, { spontanea: true }), cap: capAppunti(h) }; } return { x: `prima parlavi di ${temi[0]}. raccontami ancora`, emo: "curious" }; });
+  if (!idee.length) return { x: B.pickTemplate(ctx, "idle") };
+  return await idee[(S.mem.spunti = (S.mem.spunti || 0) + 1) % idee.length]();
 }
 function citato(h){ S.mem.citati = [...(S.mem.citati || []), h.x].slice(-12); }
 const capAppunti = h => `dai suoi appunti · ${h.fonte || "letto di notte"}${h.parole && h.parole.length ? ` · ha collegato: ${h.parole.slice(0, 3).join(", ")}` : ""}`;
@@ -977,8 +1033,11 @@ $("#bar").addEventListener("submit", e=>{
         declared = { caught: !!(lastC && /come no|sul serio|ironi|scherz|bello eh/.test(lastC.x)) };
       }
     }
+    // gli dici che non sai cosa vuol dire la parola che ha chiesto (o di cercarla): la cerca lui
+    const daCercare = !confirmed && !declared && phase() >= 3 && S.mem.ask && now() - S.mem.ask.t < 10*60e3 && /^(non lo so|boh|non saprei|non ne ho idea|non so|bho|cercal[ao]|cerca(?:lo)? tu|guarda(?:lo)? tu|vai a (?:vedere|cercare)|chiedi a google|dimmelo tu|scoprilo tu)\b/.test(a.low) ? S.mem.ask.w : null;
+    if (daCercare) S.mem.ask = null;
     // i conti: scritti a mano (nucleo/calcolo.js), la rete non li sa fare
-    const calcAns = !confirmed && !declared && phase() >= 3 ? calcola(msg) : null;
+    const calcAns = !confirmed && !declared && !daCercare && phase() >= 3 ? calcola(msg) : null;
     // domande sui SUOI gusti (nascono di notte dalle letture: nucleo/gusti.js)
     const gustoAns = !confirmed && !declared && !calcAns && phase() >= 3 ? Gusti.rispondi(S.mem.gusti, msg, S.mem.gustoUltimo) : null;
     S.mem.gustoUltimo = gustoAns && gustoAns.ultimo || null;
@@ -997,6 +1056,7 @@ $("#bar").addEventListener("submit", e=>{
     if (hit){ oracleP = null; await revealOracle(); await say(phase()>=2 ? "lo sapevo" : "!", {emo:"happy", raw:true, cap:"sapeva cosa avresti scritto"}); }
     else if (declared){ oracleP = null; hideOracle();
       await say(declared.caught ? "ahah. l'avevo capito" : "ah! ci sono cascato. me lo segno", { emo: declared.caught ? "smirk" : "surprised", raw:true, src:"chiede", cap:"sta imparando quando sei ironico" }); }
+    else if (daCercare){ oracleP = null; hideOracle(); await say(pick(["allora la cerco io","va bene, vado a cercarla","ok. la cerco da solo"]), { emo:"curious", raw:true, src:"studio", cap:`cerca «${daCercare}» sul Wikizionario…` }); await cercaParola(daCercare); }
     else if (calcAns){ oracleP = null; hideOracle(); await say(calcAns.x, { emo: "happy", raw:true, src:"studio", cap: calcAns.conto ? `${calcAns.conto} · l'ha calcolato lui, a mano` : "" }); }
     else if (sapAns){ oracleP = null; hideOracle(); citato(sapAns); await say(Appunti.frase(sapAns), { emo: "curious", raw:true, src:"studio", cap: capAppunti(sapAns) }); }
     else if (gustoAns){ oracleP = null; hideOracle(); await say(gustoAns.x, { emo: "happy", raw:true, src:"studio", cap: gustoAns.cap || "" }); }
@@ -1032,8 +1092,10 @@ $("#bar").addEventListener("submit", e=>{
         const f2 = feel ? { ...feel, ironia: irV } : (irV ? { ironia: irV } : null);
         await respond(msg, a, sense, f2);
         // ogni tanto, se parli di qualcosa che ha studiato, aggiunge quello che ne ha letto
-        if (phase() >= 3 && !a.q && S.user.msgs - (S.mem.ultimoAppunto ?? -99) >= 4 && rnd() < .4){
-          const h = await cercaAppunti(msg, 2.5); if (h && h.diretto){ S.mem.ultimoAppunto = S.user.msgs; citato(h); await say(Appunti.frase(h, { spontanea: true }), { emo: "curious", raw:true, src:"studio", cap: capAppunti(h) }); } }
+        if (phase() >= 3 && !a.q && S.user.msgs - (S.mem.ultimoAppunto ?? -99) >= 4 && rnd() < .45){
+          const gc = Gusti.commento(S.mem.gusti, msg);
+          if (gc && rnd() < .6){ S.mem.ultimoAppunto = S.user.msgs; S.mem.gustoUltimo = gc.ultimo; await say(gc.x, { emo: "happy", raw:true, src:"studio", cap: gc.cap + " · chiedigli «perché?»" }); }
+          else { const h = await cercaAppunti(msg, 2.5); if (h && h.diretto){ S.mem.ultimoAppunto = S.user.msgs; citato(h); await say(Appunti.frase(h, { spontanea: true }), { emo: "curious", raw:true, src:"studio", cap: capAppunti(h) }); } } }
       }
     }
     nucleo.impara(200).catch(()=>{});
@@ -1060,9 +1122,10 @@ setInterval(()=>{
     ghostFired = true; F.attn = true;
     queue(()=> p>=3 ? say(B.pickTemplate(ctx,"ghost"), {emo:"curious", raw:true}) : say(pick(G.ghost), {glyph:true, emo:"curious"}));
   }
-  if (Date.now()-lastAct > 50000 && Date.now()-idleFired > 180000){
+  if (Date.now()-lastAct > (p >= 3 ? 40000 : 50000) && Date.now()-idleFired > (p >= 3 ? 140000 : 180000) && (p < 3 || incalzate < 4)){
     idleFired = Date.now(); F.attn = true; F.tx=0; F.ty=0;
-    queue(()=> p>=3 ? say(B.pickTemplate(ctx,"idle"), {emo:"curious", raw:true}) : say(pick(G.idle), {glyph:true, emo:"curious"}));
+    if (p >= 3){ incalzate++; queue(async ()=>{ const r = await incalza(); if (r) await say(r.x, { emo: r.emo || "curious", raw:true, src:"studio", cap: r.cap || "" }); save(); }); }
+    else queue(()=> say(pick(G.idle), {glyph:true, emo:"curious"}));
   }
   if (S.energy.sleepUntil && !isAsleep() && !wakingUp && !dreaming) queue(()=>wakeNatural("ha dormito abbastanza"));
 }, 1000);

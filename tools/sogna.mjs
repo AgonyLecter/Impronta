@@ -78,13 +78,13 @@ export async function sognaTutti(ad, { budgetMs = 8*60e3, perMs = 75e3, studioMs
     const puoTradurre = !!traduciLibero || suo();
 
     // 1) studio
-    let letture = [], st = null, scoperte = [], fatte = [], notizie = [], citazioni = [], gruppi = [];
+    let letture = [], st = null, scoperte = [], fatte = [], notizie = [], citazioni = [], gruppi = [], imparate = [];
     if (p >= 3 && ad.studio){
       letture = arr(parse(prev.letture, [])).filter(x => typeof x === "string" && !spazzatura(x));   // pulisce anche le letture vecchie
       if (fetch){
         log(`${tag}: studia`);
         const r = await studia({ fetch, S, stato: parse(prev.stato, null), budgetMs: Math.min(studioMs, resta/3), ora: now, log, traduci: puoTradurre ? traduci : null });
-        st = r.stato; scoperte = r.scoperte; fatte = r.fatte; notizie = r.notizie || []; citazioni = r.citazioni || []; gruppi = r.gruppi || [];
+        st = r.stato; scoperte = r.scoperte; fatte = r.fatte; notizie = r.notizie || []; citazioni = r.citazioni || []; gruppi = r.gruppi || []; imparate = r.imparate || [];
         letture = [...letture, ...r.letture]; if (letture.length > MAXL) letture = letture.slice(-MAXL);
       }
     }
@@ -116,6 +116,10 @@ export async function sognaTutti(ad, { budgetMs = 8*60e3, perMs = 75e3, studioMs
     }
     if (st) patch["mem/studio"] = riassunto(st, at);
     if (notizie.length){ const vecchie = arr(S.mem && S.mem.notizie), tit = new Set(vecchie.map(n => n.titolo)); patch["mem/notizie"] = [...vecchie, ...notizie.filter(n => !tit.has(n.titolo)).map(n => ({ ...n, detta: 0 }))].slice(-20); }
+    // parole che usavi e non sapeva: cercate da solo, ora sono sue (le definizioni tue non si toccano)
+    const nuoveDef = imparate.filter(x => x.w && /^[\p{L}]+$/u.test(x.w) && !(S.defs && S.defs[x.w]));
+    if (nuoveDef.length){ for (const x of nuoveDef){ patch["defs/" + x.w] = x.def; patch["mem/defFonte/" + x.w] = x.fonte; }
+      patch["mem/imparate"] = [...arr(S.mem && S.mem.imparate), ...nuoveDef.map(x => ({ ...x, t: at, detta: 0 }))].slice(-20); log(`${tag}: parole imparate da solo: ${nuoveDef.map(x => x.w).join(", ")}`); }
     if (citazioni.length) patch["mem/citazioni"] = [...arr(S.mem && S.mem.citazioni), ...citazioni].slice(-20);
     // 4) il suo traduttore si allena e si misura, accanto a quello libero
     if (T && tatoeba && tatoeba.length){

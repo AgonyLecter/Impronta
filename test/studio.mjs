@@ -13,7 +13,7 @@ const WIKI = {
     "Geometria": { x: "La geometria è la parte della matematica che studia le figure nello spazio. La parola geometria viene dal greco e significa misura della terra.", l: ["Triangolo", "Cerchio"] },
     "Oceano": { x: "Un oceano è una vasta massa di acqua salata più grande di un mare. Sulla Terra ci sono cinque oceani principali.", l: [] }
   },
-  "it.wiktionary.org": { "pizza": { x: "pizza\nSostantivo\npizza f sing\nalimento tondo e schiacciato di pasta lievitata cotto al forno con pomodoro e mozzarella.", l: [] } },
+  "it.wiktionary.org": { "mare": { x: "mare\nSostantivo\nmare m sing (pl.: mari)\ngrande distesa di acqua salata che copre gran parte della terra\n\nSinonimi\noceano, pelago, acque", l: [] }, "pizza": { x: "pizza\nSostantivo\npizza f sing\nalimento tondo e schiacciato di pasta lievitata cotto al forno con pomodoro e mozzarella.", l: [] } },
   "it.wikibooks.org": {
     "Matematica per le superiori": { x: "Questo libro spiega la matematica per le scuole superiori in modo semplice e chiaro.", l: [] },
     "Matematica per le superiori/Capitolo 2": { x: "Un numero primo è un numero naturale maggiore di uno divisibile solo per uno e per se stesso. I numeri primi sono infiniti, come dimostrò Euclide.", l: [] },
@@ -83,11 +83,12 @@ const pk = impacchetta({ a: "x".repeat(9e6) }, { at: 1 }); ok(pk.meta.parts === 
 const M0 = new Maestro(); M0.init({ corpus, seed: 3 }); for (let i=0;i<4;i++) M0.impara(300);
 const db = { stati: { AAAABBBBCCCCDDDD: S }, nets: { AAAABBBBCCCCDDDD: impacchetta(M0.save(), { at: 1, steps: M0.net.steps, by: "tel" }) }, studio: {} };
 const ad = { stati: async () => db.stati, rete: async id => db.nets[id], studio: async id => db.studio[id], salvaStudio: async (id, d) => { db.studio[id] = d; }, salvaRete: async (id, n) => { db.nets[id] = n; },
-  aggiorna: async (id, patch) => { for (const [k, v] of Object.entries(patch)){ const p = k.split("/"); let o = db.stati[id]; while (p.length > 1) o = o[p.shift()]; o[p[0]] = v; } } };
-const fatti = await sognaTutti(ad, { budgetMs: 40000, perMs: 8000, studioMs: 15000, fetch: fintoFetch, log: () => {} });
+  aggiorna: async (id, patch) => { for (const [k, v] of Object.entries(patch)){ const p = k.split("/"); let o = db.stati[id]; while (p.length > 1){ const k = p.shift(); o = o[k] = o[k] || {}; } o[p[0]] = v; } } };   // come Firebase: crea i nodi che mancano
+const fatti = await sognaTutti(ad, { budgetMs: 40000, perMs: 8000, studioMs: 15000, fetch: fintoFetch, log: process.env.DEBUG ? console.log : () => {} });
 const S2 = db.stati.AAAABBBBCCCCDDDD;
 ok(fatti.length === 1 && S2.mem.scoperte.length >= 3 && S2.mem.scoperte.every(s => s.detta === 0), `lascia ${S2.mem.scoperte.length} scoperte da raccontare`);
 ok(S2.mem.studia.every(q => q.fatto), "le tue richieste risultano fatte");
+ok(S2.defs && /distesa di acqua salata/.test(S2.defs.mare || "") && S2.mem.defFonte.mare === "Wikizionario" && S2.mem.imparate.some(x => x.w === "mare" && x.detta === 0), "una parola che usi e non sapeva: la cerca da solo sul Wikizionario e se la salva («mare» → " + (S2.defs && S2.defs.mare) + ")");
 ok(S2.mem.scoperte.some(d => Array.isArray(d.frasi) && d.frasi.length && d.frasi.every(f => f !== d.x)), "le scoperte si portano dietro qualche frase studiata (per i suoi appunti)");
 ok(S2.mem.studio && S2.mem.studio.pagine > 0, "lascia il riassunto dello studio nello stato");
 const N = spacchetta(db.nets.AAAABBBBCCCCDDDD), M2 = new Maestro(); M2.init({ saved: N, corpus });

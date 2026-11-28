@@ -289,7 +289,7 @@ export function scegli(S, st, { max = 10 } = {}){
 /* ---------- studiare ---------- */
 export async function studia({ fetch, S, stato, budgetMs = 45000, maxPagine = 10, ora = Date.now, log = () => {}, pausa = 700, traduci = null }){
   const st = Object.assign(nuovoStato(), stato || {}); st.visti = st.visti || {}; st.coda = arr(st.coda); st.storia = arr(st.storia); st.notti = (st.notti || 0) + 1;
-  const L = lettore(fetch, { pausa }), t0 = ora(), letture = [], scoperte = [], fatte = [], notizie = [], citazioni = [];
+  const L = lettore(fetch, { pausa }), t0 = ora(), letture = [], scoperte = [], fatte = [], notizie = [], citazioni = [], imparate = [];
   // da dove viene ogni frase (per i suoi gusti): { "tipo|nome": { tipo, nome, frasi } }
   const gruppi = {}, gruppo = (tipo, nome, fr) => { if (!nome || !fr || !fr.length) return; const k = tipo + "|" + nome; (gruppi[k] = gruppi[k] || { tipo, nome: String(nome), frasi: [] }).frasi.push(...fr); };
   // testo in inglese: lo traduce (se c'è un traduttore) e lo tratta come italiano; altrimenti lo lascia stare
@@ -310,8 +310,10 @@ export async function studia({ fetch, S, stato, budgetMs = 45000, maxPagine = 10
   const impara = async (pag, fonte, job, { tante = 120, scoperta = true } = {}) => {
     const { fr, tradotto } = fonte === "wikizionario" ? { fr: dizionario(pag.testo, pag.titolo), tradotto: false } : await inItaliano(pag.testo, tante); if (!fr.length) return 0;
     letture.push(...fr);
+    // una parola cercata sul dizionario: la definizione diventa sua (S.defs), e la riusa
+    if (fonte === "wikizionario" && job.tipo === "parola" && job.q){ const d0 = fr.find(f => f.startsWith(job.q.toLowerCase() + " significa ")); if (d0) imparate.push({ w: job.q.toLowerCase(), def: d0.replace(/^\S+ significa /, "").replace(/\.$/, ""), fonte: "Wikizionario" }); }
     if (job.tipo === "materia") gruppo("materie", job.materia, fr); else if (job.tipo === "classico") gruppo("libri", job.libro, fr); else if (job.tipo !== "parola") gruppo("temi", pag.titolo, fr);
-    if (scoperta){ const d = definizione(fr, pag.titolo); if (d){ const sc = { t: ora(), argomento: pag.titolo, x: d.length > 260 ? d.slice(0, 257).replace(/\s\S*$/, "") + "…" : d, fonte: (FONTI[fonte] ? FONTI[fonte].nome : fonte) + (tradotto && fonte !== "inglese" ? " (tradotto dall'inglese)" : tradotto ? " (tradotta)" : ""), url: pag.url, perche: job.perche, frasi: fr.filter(f => f !== d && f.length < 220).slice(0, 6) };
+    if (scoperta){ const d = definizione(fr, pag.titolo); if (d){ const sc = { t: ora(), argomento: pag.titolo, x: d.length > 260 ? d.slice(0, 257).replace(/\s\S*$/, "") + "…" : d, fonte: (FONTI[fonte] ? FONTI[fonte].nome : fonte) + (tradotto && fonte !== "inglese" ? " (tradotto dall'inglese)" : tradotto ? " (tradotta)" : ""), url: pag.url, perche: job.perche, frasi: fr.filter(f => f !== d && f.length < 220).slice(0, 12) };
       scoperte.push(sc); if (fonte === "wikipedia" || fonte === "inglese") await conFatti(pag.titolo, fonte, sc); } }
     // i collegamenti diventano curiosità per le notti dopo (quelli sui tuoi argomenti passano avanti)
     if (fonte === "wikipedia") for (const t of arr(pag.link).slice(0, 40)) if (!st.visti[chiave("wikipedia", t)] && !st.coda.some(c => c.t === t)) st.coda.push({ f: "wikipedia", t, da: pag.titolo });
@@ -387,7 +389,7 @@ export async function studia({ fetch, S, stato, budgetMs = 45000, maxPagine = 10
   st.storia.push({ t: ora(), pagine, frasi: letture.length }); if (st.storia.length > 60) st.storia.shift();
   // i "visti" più vecchi di 60 giorni si possono ristudiare (le pagine cambiano, e ripassare fa bene)
   for (const [k, t] of Object.entries(st.visti)) if (ora() - t > 60*86400e3) delete st.visti[k];
-  return { stato: st, letture, scoperte, fatte, notizie, citazioni, gruppi: Object.values(gruppi) };
+  return { stato: st, letture, scoperte, fatte, notizie, citazioni, gruppi: Object.values(gruppi), imparate };
 }
 
 /* riassunto piccolo da mettere nello stato dell'app (trasparenza: cosa studia e dove è arrivato) */

@@ -1,6 +1,6 @@
 /* gusti: deterministici, dipendono dal carattere, stabili (isteresi), spiegabili, e rispondono alle domande */
 import { Maestro } from "../nucleo/maestro.js";
-import { misura, aggiorna, classifica, perche, rispondi, scegliParole, SOGLIA } from "../nucleo/gusti.js";
+import { misura, aggiorna, classifica, perche, rispondi, scegliParole, applicaParole, commento, SOGLIA } from "../nucleo/gusti.js";
 
 let fail = 0; const ok = (c, m) => { console.log((c ? "ok   " : "NO   ") + m); if (!c) fail++; };
 
@@ -34,7 +34,7 @@ const fav = Gm.preferiti.temi, altro = Object.keys(Gm.temi).find(n => n !== fav)
 const finta = misure.map(x => x.nome === altro ? { ...x, sente: x.sente.map((v, i) => i === 1 ? 1 : 0) } : x);   // stanotte "altro" sembra tristissimo
 const G1 = aggiorna(Gm, finta, malinconico, 5000);
 ok(G1.preferiti.temi === fav, `una notte sola non gli fa cambiare idea (resta ${fav}; ${altro} ${Gm.temi[altro].p} → ${G1.temi[altro].p})`);
-let Gk = Gm; for (let i = 0; i < 12; i++) Gk = aggiorna(Gk, finta, malinconico, 6000 + i);
+let Gk = Gm; for (let i = 0; i < 30; i++) Gk = aggiorna(Gk, finta, malinconico, 6000 + i);   // 30 notti: robusto anche se la rete del test è allenata meno (allenamento a tempo)
 ok(Gk.preferiti.temi === altro && Gk.storia.some(s => s.nuovo === altro && s.prima === fav), `tante notti sì: cambia idea piano (${fav} → ${Gk.preferiti.temi}), e lo ricorda`);
 
 const pq = perche(Gm.temi[fav]);
@@ -61,4 +61,11 @@ const Gp = { ...Gm, parole: P };
 const r5 = rispondi(Gp, "che parola preferisci per dire felice?");
 ok(r5 && r5.x.startsWith(P.felice.w), `«che parola preferisci per dire felice?» → «${r5 && r5.x}»`);
 
+// usa davvero le sue parole
+{ const PP = { contento: { w: "contento", tra: ["contento", "felice", "lieto"] } }, A = applicaParole("sono felice. Felice anche tu? infelice no", PP);
+  ok(A.x === "sono contento. Contento anche tu? infelice no" && A.cambi.length === 1, `nelle sue frasi usa la sua parola: «${A.x}» (solo parole intere)`); }
+// commenti spontanei
+{ const c1 = commento(Gm, "oggi ho letto cose sulla malinconia"), c2 = commento(Gm, "ciao come va");
+  ok(c1 && /malinconia/.test(c1.x) && c1.ultimo && c1.ultimo.nome === "malinconia", `parli di una cosa che ama: «${c1 && c1.x}»`);
+  ok(c2 === null, "se non parli dei suoi gusti non commenta"); }
 console.log(fail ? `${fail} errori` : "tutto ok"); process.exit(fail ? 1 : 0);
