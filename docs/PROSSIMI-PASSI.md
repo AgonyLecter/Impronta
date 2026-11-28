@@ -46,7 +46,7 @@ Riprova quando vuoi: `actions_run_trigger` run_workflow su `sogni.yml` con `inpu
 ### 4. Idee già discusse, non fatte
 - ~~Un modulo di calcolo scritto a mano~~ FATTO: `nucleo/calcolo.js` + `test/calcolo.mjs`.
 - ~~Allargare `nucleo/istinto.js`~~ FATTO: ~600 frasi; `test/emozioni.mjs` misura su frasi mai viste (banco alla cieca ~35% → ~43%). Le parole sconosciute ora si leggono dai trigrammi (`Rete.idsLeggi`).
-- ~~Far usare alla rete gli appunti/scoperte per rispondere~~ FATTO: `nucleo/appunti.js` + `test/appunti.mjs` (risponde alle domande di sapere dai suoi appunti, con la fonte; ogni tanto ne parla da solo; la sua rete allarga la ricerca alle parole vicine). Idea dopo: più frasi per scoperta sul server, e un indice delle letture intere.
+- ~~Far usare alla rete gli appunti/scoperte per rispondere~~ FATTO: `nucleo/appunti.js` + `test/appunti.mjs` (risponde alle domande di sapere dai suoi appunti, con la fonte; ogni tanto ne parla da solo; la sua rete allarga la ricerca alle parole vicine). Fatto anche: 12 frasi per scoperta sul server; le definizioni imparate entrano negli appunti. Idea dopo: un indice delle letture intere.
 
 ### 5. Preferenze SUE — FATTO (prima versione), da vedere nei giri veri
 `nucleo/gusti.js` + `test/gusti.mjs`. Ogni notte il server misura con la rete appena allenata ciò che ha letto,
@@ -57,8 +57,7 @@ Parole: tra sinonimi (WordNet) sceglie quella che la sua rete prevede meglio ed 
 Effetti: risponde a «qual è il tuo libro/autore/argomento/materia preferito?», «chi preferisci tra X e Y?», «perché?»,
 «che parola preferisci per dire X?»; scrive nel diario quando nasce un gusto o cambia idea; lo studio segue un
 collegamento dell'argomento preferito; scheda «i suoi gusti» (da «mente»).
-Da fare dopo: usare davvero le parole preferite nelle sue frasi (`brain.js`, attenzione al vincolo del vocabolario);
-commenti spontanei sui gusti; grafico di come cambiano nel tempo.
+FATTO dopo: usa davvero le parole preferite (`applicaParole`), commenti spontanei (`commento`). Resta: grafico di come cambiano nel tempo.
 Nel registro del server cercare la riga `gusti · N cose misurate · argomento: …`.
 
 ## Come controllare il server (strumenti GitHub MCP)
@@ -71,3 +70,8 @@ Nel registro del server cercare la riga `gusti · N cose misurate · argomento: 
 `node test/{gradienti,insegnamenti,crescita,studio,fonti,sogni-server,traduttore}.mjs`,
 `node test/maestro.mjs` (~30 s), e nel browser `node test/{browser,browser-studio,browser-nascita,browser-mondo}.cjs`
 (Playwright già installato; niente server locali; `browser-mondo` usa `https://impronta.local` per la posizione).
+
+### 6. Parole nuove e iniziativa — FATTO (28/11)
+Capisce da solo le parole nuove (WordNet) o le chiede; «cercalo tu» → Wikizionario; se ignori la domanda la cerca e te lo dice dopo;
+di notte cerca le parole che usi e non sa. Quando stai zitto ti incalza (scoperte, parole, gusti, ultimo argomento).
+Test: `test/browser-parole.cjs`. Da vedere dal vivo: se incalza troppo o troppo poco (40 s / 4 volte per sessione).

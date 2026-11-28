@@ -150,3 +150,33 @@ export function rispondi(G, testo, ultimo = null){
   }
   return null;
 }
+
+/* usa davvero le sue parole: nelle SUE frasi un sinonimo diventa la parola che preferisce.
+   Solo parole intere; rispetta la maiuscola iniziale. Restituisce { x, cambi: [[da, a]] } */
+export function applicaParole(x, parole = {}){
+  const cambi = []; let out = String(x);
+  for (const v of Object.values(parole || {})){
+    if (!v || !v.w || !Array.isArray(v.tra)) continue;
+    for (const da of v.tra){ if (!da || da === v.w || da.includes(" ")) continue;
+      const re = new RegExp(`(?<![\\p{L}'])${da}(?![\\p{L}])`, "giu");
+      if (re.test(out)){ out = out.replace(re, m => m[0] === m[0].toUpperCase() && m[0] !== m[0].toLowerCase() ? v.w.charAt(0).toUpperCase() + v.w.slice(1) : v.w); cambi.push([da, v.w]); } }
+  }
+  return { x: out, cambi };
+}
+
+/* un commento spontaneo quando parli di qualcosa che ama (o che non gli piace) */
+const radice = w => String(w).toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[aeiou]$/, "").slice(0, 7);
+export function commento(G, testo){
+  if (!G) return null;
+  const ws = new Set(tok(testo).filter(w => w.length > 3).map(radice)); if (!ws.size) return null;
+  let best = null;
+  for (const t of TIPI) for (const [nome, o] of Object.entries(G[t] || {})){
+    const rs = tok(nome).filter(w => w.length > 3).map(radice); if (!rs.length || !rs.some(r => ws.has(r))) continue;
+    if (!best || Math.abs(o.p - .4) > Math.abs(best.o.p - .4)) best = { t, nome, o };
+  }
+  if (!best) return null;
+  const { t, nome, o } = best, fav = (G.preferiti || {})[t] === nome, n = nome.toLowerCase();
+  const x = fav ? `${n}! è il mio ${NOME[t]} preferito. ${perche(o, true)}`
+    : o.p >= .45 ? `${n} mi piace. ${perche(o, true)}` : o.p < .25 ? `a me ${n} piace poco. ${perche(o, true)}` : null;
+  return x ? { x, cap: `i suoi gusti · punteggio ${o.p.toFixed(2)}`, ultimo: { tipo: t, nome } } : null;
+}

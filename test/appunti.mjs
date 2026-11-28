@@ -27,4 +27,6 @@ ok(quaderno({ scoperte: { 0: { argomento: "Mare", x: "Il mare è salato.", frasi
 const M = new Maestro(); M.init({ corpus: ["il vulcano sputa lava e fuoco", "la lava del vulcano è fuoco", "il fuoco brucia come la lava", "il mare è pieno di acqua", "l'acqua del mare è salata"], seed: 5 });
 for (let i = 0; i < 20; i++) M.impara(400);
 const nn = M.net.near("fuoco", 5, ["lava", "mare", "acqua", "vulcano", "salata"]); ok(nn.length && Number.isFinite(nn[0][1]), `la sua rete dà le vicine di «fuoco»: ${nn.map(([w, s]) => w + " " + s.toFixed(2)).join(", ")}`);
+{ const Q2 = quaderno({ ...mem, defFonte: { zibaldone: "Wikizionario" } }, { zibaldone: "quaderno di appunti senza ordine" }), h = cerca(Q2, "cos'è uno zibaldone?");
+  ok(h && h.tipo === "parola" && h.fonte === "Wikizionario" && frase(h) === "zibaldone vuol dire quaderno di appunti senza ordine.", "riusa le parole che ha imparato (anche cercate da solo): «" + (h && frase(h)) + "»"); }
 console.log(fail ? `${fail} errori` : "tutto ok"); process.exit(fail ? 1 : 0);

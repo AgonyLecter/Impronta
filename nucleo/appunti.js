@@ -22,8 +22,10 @@ const STOPD = new Set([...STOP].map(deacc));
 const contenuto = s => parole(s).filter(w => w.length > 2 && !STOPD.has(w) && !/^(cosa|sai|dimmi|perche|come|mai|quale|quali|sapevi|parlami|conosci|sono|essere|stato|anno|anni|molto|tanto|cose|fatto|fare|dire)$/.test(w));
 
 /* il quaderno: tutte le frasi da cui può rispondere, con la fonte */
-export function quaderno(mem = {}){
+export function quaderno(mem = {}, defs = {}){
   const Q = [], arr = v => Array.isArray(v) ? v : v && typeof v === "object" ? Object.values(v) : [];
+  // le parole che ha imparato (da te, dal dizionario, cercate da solo): riusa quello che impara
+  for (const [w, d] of Object.entries(defs || {})) if (d && typeof d === "string") Q.push({ argomento: w, x: `${w} vuol dire ${d}.`, fonte: (mem.defFonte && mem.defFonte[w]) || "me l'hai insegnato tu", tipo: "parola", def: 1 });
   for (const d of arr(mem.scoperte)){ if (!d || !d.x) continue;
     const base = { argomento: d.argomento, fonte: d.fonte, url: d.url, tipo: "scoperta" };
     Q.push({ ...base, x: d.x, def: 1 });
@@ -61,6 +63,7 @@ export function cerca(Q, testo, { vicine = {}, escludi = new Set() } = {}){
     for (const [r, w] of peso) if (it.ra.has(r)) sc += 1.2*w*idf(r);     // ne parla proprio
     let diretto = false; for (const [r] of peso) if (it.ra.has(r)) diretto = true;
     if (vuole && vuole.test(it.x)) sc *= 1.6; else if (it.def) sc *= 1.15;   // la risposta del tipo giusto, o la definizione
+    if (it.tipo === "parola" && diretto) sc *= 1.8;                       // gli chiedi proprio quella parola: la sua definizione
     sc /= Math.sqrt(Math.max(4, it.r.size))/2;                           // le frasi lunghissime non vincono per quantità
     if (!best || sc > best.punteggio){ const { r, ra, ...resto } = it; best = { ...resto, punteggio: +sc.toFixed(3), parole: usate, diretto }; }
   }
@@ -79,6 +82,7 @@ const minuscola = s => s ? s.charAt(0).toLowerCase() + s.slice(1) : s;
 export function frase(hit, { spontanea = false } = {}){
   const x = String(hit.x).replace(/\s+/g, " ").trim(), arg = String(hit.argomento || "").toLowerCase();
   if (hit.tipo === "citazione") return spontanea ? `mi viene in mente una frase: «${x}»` : `ho letto questa frase: «${x}»`;
+  if (hit.tipo === "parola") return spontanea ? `${arg}: ${minuscola(x.replace(/^\S+ vuol dire /, "vuol dire "))}` : minuscola(x);
   if (hit.tipo === "notizia") return spontanea ? `stanotte ho letto una notizia: ${minuscola(x)}` : `ho letto nelle notizie: ${minuscola(x)}`;
   if (spontanea) return `a proposito di ${arg}: ho letto che ${minuscola(x)}`;
   return `ho letto che ${minuscola(x)}`;
