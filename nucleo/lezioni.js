@@ -13,18 +13,20 @@
    Puro: restituisce cosa ha capito, l'app decide cosa farne. */
 
 const W = "([a-zà-ù'][a-zà-ù'-]{1,30})";
-const VUOTE = /^(cosa|che|chi|come|dove|quando|perch[eé]|quale|quanto|io|tu|lui|lei|noi|voi|loro|mi|ti|ci|non|si|ma|e|o|questo|questa|quello|quella|oggi|ieri|domani|ora|adesso)$/;
+const VUOTE = /^(cosa|che|chi|come|dove|quando|perch[eé]|quale|qual|quanto|quanti|cos|com|dov|io|tu|lui|lei|noi|voi|loro|mi|ti|ci|non|si|ma|e|o|questo|questa|quello|quella|oggi|ieri|domani|ora|adesso)$/;
 const pulisci = s => String(s || "").replace(/[«»"“”]/g, "").replace(/\s+/g, " ").replace(/[.!?;,\s]+$/, "").trim();
 const art = s => s.replace(/^(il|lo|la|l'|i|gli|le|un|una|uno|un')\s*/i, "");
 const ok = w => w && w.length >= 2 && !VUOTE.test(w);
 
 export function lezione(testo, attesa = null){
   const low = pulisci(String(testo).toLowerCase().replace(/[’`]/g, "'"));
-  if (!low) return null;
+  if (!low || /https?:|www\./.test(low)) return null;                 // un link non è una lezione
+  const domanda = /\?\s*$/.test(String(testo).trim());
   let m;
   // elenco e dimenticare
   if (/^(cosa|che cosa|quali parole|che parole) (ti ho insegnato|hai imparato da me|ti ho spiegato)$/.test(low) || /^(quali|che) parole (conosci|sai) (da me|che ti ho insegnato)$/.test(low)) return { tipo: "elenco" };
   if ((m = low.match(new RegExp(`^(?:dimentica|scordati|cancella)(?: la parola)? ${W}$`))) && ok(m[1])) return { tipo: "dimentica", w: art(m[1]) };
+  if (domanda) return null;                                              // una domanda non è mai una lezione
   // annunciare una parola da insegnare
   if ((m = low.match(new RegExp(`^(?:ti insegno|ti spiego|impara|imparati|ti dico)(?: una nuova parola| una parola nuova| una parola| la parola| questa parola)[:,]?\\s*${W}$`))) && ok(m[1])) return { tipo: "chiedi", w: art(m[1]) };
   // correzioni
@@ -37,7 +39,7 @@ export function lezione(testo, attesa = null){
   if ((m = corpo.match(new RegExp(`^(?:la parola )?${W} (?:è come|vuol dire come|è uguale a|è un sinonimo di|è sinonimo di) ${W}$`))) && ok(m[1]) && ok(m[2]) && !/^(un|una|uno|il|la|lo)$/.test(m[2])) return { tipo: "sinonimo", w: art(m[1]), y: art(m[2]) };
   // definizioni
   const def = (w, x) => { w = art(w); x = pulisci(x); return ok(w) && x.length >= 2 && x.split(" ").length <= 30 && x !== w ? { tipo: tipoDef, w, x } : null; };
-  if ((m = corpo.match(new RegExp(`^(?:la parola |il termine )?${W}\\s*(?:=|:)\\s*(.+)$`)))) { const r = def(m[1], m[2]); if (r) return r; }
+  if ((corpo !== low || /^(?:la parola|il termine) /.test(corpo)) && (m = corpo.match(new RegExp(`^(?:la parola |il termine )?${W}\\s*(?:=|:)\\s*(.+)$`)))) { const r = def(m[1], m[2]); if (r) return r; }   // «impara: X = …»
   if ((m = corpo.match(new RegExp(`^(?:la parola |il termine )?(?:il |lo |la |l'|un |una |uno |i |gli |le )?${W} (?:vuol dire|significa|indica|si usa per|serve per|serve a|si dice quando|è quando|sono quando) (.+)$`)))) { const r = def(m[1], m[2]); if (r) return r; }
   if ((m = corpo.match(new RegExp(`^si dice ${W} (quando .+|per .+)$`)))) { const r = def(m[1], m[2]); if (r) return r; }
   if ((m = corpo.match(new RegExp(`^(?:la parola |il termine )?(?:il |lo |la |l'|un |una |uno |i |gli |le )?${W} (?:è|sono) ((?:un|una|uno|un'|il|la|lo|l'|i|gli|le|quando|come|tipo|quella cosa|quel|quella) .+)$`))) && (corr || /^(?:la parola|il termine|impara|ricorda)/.test(low) || m[2].split(" ").length >= 2)){ const r = def(m[1], m[2]); if (r) return r; }

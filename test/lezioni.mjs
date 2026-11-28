@@ -14,7 +14,7 @@ eq("allegro e contento sono sinonimi", { tipo: "sinonimo", w: "allegro", y: "con
 eq("il contrario di caldo è freddo", { tipo: "contrario", w: "caldo", y: "freddo" });
 eq("dimentica la parola zibaldone", { tipo: "dimentica", w: "zibaldone" });
 eq("cosa ti ho insegnato?", { tipo: "elenco" });
-for (const t of ["oggi sono andato al mare", "il mare è bello", "cosa vuol dire zibaldone?", "sono stanco", "io sono luca", "tu sei bravo", "ti voglio bene", "quanto fa 3 più 4"]) ok(lezione(t) === null, `non è una lezione: «${t}»`);
+for (const t of ["https://share.google/NdVRRKXN5IEOtFv3Y", "qual è il tuo libro preferito?", "chi è il tuo amico?", "nota: domani piove", "oggi sono andato al mare", "il mare è bello", "cosa vuol dire zibaldone?", "sono stanco", "io sono luca", "tu sei bravo", "ti voglio bene", "quanto fa 3 più 4"]) ok(lezione(t) === null, `non è una lezione: «${t}»`);
 ok(risposta({ tipo: "def", w: "zibaldone", x: "quaderno di appunti" }, { prima: true }) === "zibaldone vuol dire quaderno di appunti. è la prima parola che mi insegni. non la dimentico", "la prima parola che gli insegni la festeggia");
 ok(risposta({ tipo: "correggi", w: "zibaldone", x: "raccolta di pensieri" }, { vecchia: "quaderno" }) === "ah. pensavo che zibaldone fosse quaderno. invece vuol dire raccolta di pensieri. grazie", "quando lo correggi dice cosa pensava prima");
 console.log(fail ? `${fail} errori` : "tutto ok"); process.exit(fail ? 1 : 0);
