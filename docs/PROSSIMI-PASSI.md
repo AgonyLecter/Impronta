@@ -54,6 +54,37 @@ Per farlo dormire: laboratorio (tocca 5 volte «impronta.») → «dormi», chiu
 - Allargare `nucleo/istinto.js` (comprensione emotiva ~20-35%).
 - Far usare alla rete gli appunti/scoperte per rispondere (oggi risponde con le scoperte salvate).
 
+### 5. Preferenze SUE (richiesta dell'utente, da progettare e fare)
+Deve sviluppare gusti personali che nascono dai **suoi** parametri e dalla sua storia, non a caso e non
+copiati dall'utente: preferire uno scrittore a un altro, un argomento, una materia, una parola invece di un
+sinonimo. Devono essere **stabili** (cambiano piano, con isteresi), **spiegabili con numeri veri** e a volte
+**diversi da quelli dell'utente** (può non essere d'accordo).
+
+Segnali misurabili da cui ricavarli (tutti già disponibili o quasi):
+- **Sorpresa giusta**: la perdita della sua rete su un testo. Gli piace ciò che non è né banale né
+  incomprensibile (sorpresa media) — idea della "curiosità come progresso di compressione".
+- **Progresso di apprendimento**: quanto scende la sua perdita su un autore/argomento notte dopo notte.
+  Gli piace ciò da cui impara di più.
+- **Come lo fa sentire**: la testa affettiva (8 emozioni) letta sulle frasi di quell'autore/argomento
+  (es. Leopardi → malinconia), pesata dal suo carattere (`S.traits`: calore, ironia, malinconia…).
+- **Familiarità**: quante volte l'ha incontrato (frequenza nelle letture), con un po' di gusto per il nuovo.
+- **Parole**: tra i sinonimi (WordNet, `dati/parole-it.json`) sceglie la sua per ogni concetto in base
+  alla frequenza nelle sue letture, alla vicinanza nel suo spazio delle parole (embedding) e a un "orecchio"
+  (lunghezza, suoni/trigrammi che la sua rete predilige). Poi la usa davvero nelle sue frasi (`brain.js`).
+
+Proposta di struttura:
+- `nucleo/gusti.js` (puro, testabile): `valuta(oggetto, segnali, carattere)` → punteggio + motivazioni;
+  aggiornamento lento (media mobile) e soglia per cambiare idea.
+- Sul server (`tools/sogna.mjs`) ogni notte: misurare i segnali per autori (Gutenberg/Wikisource), materie,
+  argomenti letti; scrivere `S.mem.gusti = { autori, temi, materie, parole: { concetto: parola } }`
+  con il "perché" in numeri.
+- Effetti: sceglie cosa studiare anche in base ai gusti (più spesso ciò che gli piace, ma non solo);
+  risponde a «chi preferisci tra X e Y?», «qual è il tuo libro preferito?», «perché?»; commenti spontanei
+  («questo autore mi piace: le sue frasi mi sorprendono ma le capisco»); usa le sue parole preferite.
+- HUD: scheda «gusti» (classifiche a punti, motivazioni con i numeri, come sono cambiati nel tempo).
+- Test: stessi testi → stessi gusti (deterministico); carattere diverso → gusti diversi; un gusto non
+  si ribalta per una sola notte.
+
 ## Come controllare il server (strumenti GitHub MCP)
 1. `actions_run_trigger` run_workflow su `sogni.yml`, ref `main`.
 2. Aspettare ~3 minuti (in background), poi `actions_list` list_workflow_runs → list_workflow_jobs.
