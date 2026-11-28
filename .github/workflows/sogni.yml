@@ -14,7 +14,7 @@ jobs:
         with: { node-version: 22 }
       - uses: actions/setup-python@v5
         with: { python-version: "3.12" }
-      # il traduttore libero (Argos en→it) e le frasi di Tatoeba si scaricano una volta e restano in cache
+      # il traduttore libero (OPUS-MT en→it) e le frasi di Tatoeba si scaricano una volta e restano in cache
       - uses: actions/cache/restore@v4
         with:
           path: ~/.impronta
@@ -24,8 +24,11 @@ jobs:
       - run: pip install --quiet --disable-pip-version-check ctranslate2 sentencepiece || echo "traduttore libero non installato"
       - name: traduttore libero (solo la prima volta)
         run: |
-          if ! ls ~/.impronta/argos/*/sentencepiece.model >/dev/null 2>&1; then
-            python3 tools/traduci.py --scarica && echo "NUOVO=1" >> "$GITHUB_ENV" || echo "traduttore libero non disponibile"
+          if [ ! -s ~/.impronta/opus/model.bin ]; then
+            # serve solo per convertire il modello di Hugging Face; poi bastano ctranslate2 e sentencepiece
+            pip install --quiet --disable-pip-version-check torch --index-url https://download.pytorch.org/whl/cpu \
+              && pip install --quiet --disable-pip-version-check transformers \
+              && python3 tools/traduci.py --scarica && echo "NUOVO=1" >> "$GITHUB_ENV" || echo "traduttore libero non disponibile"
           fi
       - name: frasi di Tatoeba (solo la prima volta)
         run: |
@@ -44,4 +47,5 @@ jobs:
         env:
           FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
           TATOEBA: /home/runner/.impronta/ita.txt
+          OPUS_DIR: /home/runner/.impronta/opus
           ARGOS_DIR: /home/runner/.impronta/argos

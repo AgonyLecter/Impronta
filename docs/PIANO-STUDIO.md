@@ -56,5 +56,5 @@ espliciti che la rete impara a usare e a raccontare.
 | Wikipedia in inglese | server (telefono: avvisa) | se in italiano non c'è: tradotta e poi studiata |
 | Open-Meteo, OpenStreetMap | telefono | meteo e luoghi |
 
-Traduzione: prima il traduttore libero (Argos), altrimenti il suo se ha almeno il 60% di parole giuste; altrimenti l'inglese si salta.
-Da verificare dal primo registro vero del workflow: download di Argos e di Tatoeba, formato dei feed, Gutendex.
+Traduzione: prima il traduttore libero (OPUS-MT), altrimenti il suo se ha almeno il 60% di parole giuste; altrimenti l'inglese si salta.
+Da verificare dal primo registro vero del workflow: download di OPUS-MT e di Tatoeba, formato dei feed, Gutendex.

@@ -22,19 +22,16 @@ scrive «controlla»: si lancia il workflow `sogni` a mano e si legge il registr
 
 ## DA FARE, in ordine
 
-### 1. Traduttore libero: Argos non si scarica → passare a OPUS-MT (Hugging Face)
-Il sito di Argos e la sua copia IPFS rispondono **403** ai download automatici. NON aggirare il rifiuto
-(niente user agent finti: è stato bloccato ed è giusto). Piano concordato con l'utente (da confermare):
-- Nel workflow, una sola volta (poi cache in `~/.impronta/opus`):
-  `pip install ctranslate2 sentencepiece transformers` + `torch` CPU
-  (`pip install torch --index-url https://download.pytorch.org/whl/cpu`), poi
-  `ct2-transformers-converter --model Helsinki-NLP/opus-mt-en-it --output_dir ~/.impronta/opus --copy_files source.spm target.spm`.
-- In `tools/traduci.py`: se c'è `~/.impronta/opus`, tradurre con CTranslate2:
-  codificare con `source.spm` (sentencepiece), aggiungere `"</s>"` in coda ai token,
-  `translate_batch`, decodificare l'ipotesi con `target.spm`. (Vedi la guida OPUS-MT di CTranslate2.)
-- Il resto (`sogna.mjs`) non cambia: `traduciLibero` chiama `tools/traduci.py` e accetta null.
-- Hugging Face e Argos NON sono raggiungibili dall'ambiente cloud di Claude: si prova solo nel workflow.
-- Finché manca il traduttore libero, l'inglese si salta, finché il suo traduttore non supera il 60%.
+### 1. Traduttore libero: OPUS-MT al posto di Argos — FATTO nel codice, da vedere nel primo giro vero
+Argos rifiutava i download automatici (403), quindi ora si usa OPUS-MT `Helsinki-NLP/opus-mt-en-it` (Hugging Face).
+- Workflow: se manca `~/.impronta/opus/model.bin`, installa `torch` CPU + `transformers` e lancia
+  `tools/traduci.py --scarica` (converte con `ct2-transformers-converter`, int8, copia `source.spm`/`target.spm`);
+  poi la cartella resta in cache e bastano `ctranslate2` + `sentencepiece`.
+- `tools/traduci.py`: pezzi SentencePiece + `"</s>"`, `translate_batch`, decodifica con `target.spm`.
+  Un vecchio modello Argos in cache resta come riserva; se non c'è niente risponde null come prima.
+- Provato qui solo il collegamento (SentencePiece vero + CTranslate2 finto): Hugging Face e pytorch.org
+  sono bloccati dall'ambiente cloud. **Da controllare nel registro**: la riga
+  `traduttore libero: pronto («The sea is blue.» → «…»)`. Il primo giro dura qualche minuto in più.
 
 ### 2. Il giro orario di GitHub non parte
 Da quando è stato pubblicato il workflow (`cron: "23 * * * *"`) è partito una sola volta in automatico;

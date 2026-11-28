@@ -49,7 +49,7 @@ function campione(xs, n, r = Math.random){ if (xs.length <= n) return xs.slice()
    adapter = { stati(), rete(id), aggiorna(id, patch), salvaRete(id, nodo), studio?(id), salvaStudio?(id, dati) }
    fetch = per studiare (null = niente studio)
    tatoeba = coppie [inglese, italiano] di Tatoeba (frasi naturali per parlare meglio + per imparare a tradurre)
-   traduciLibero = traduttore libero già allenato (Argos), async frasi → frasi | null */
+   traduciLibero = traduttore libero già allenato (OPUS-MT), async frasi → frasi | null */
 export async function sognaTutti(ad, { budgetMs = 8*60e3, perMs = 75e3, studioMs = 45e3, tradMs = 20e3, fetch = null, tatoeba = null, traduciLibero = null, now = Date.now, log = console.log } = {}){
   const t0 = now(), stati = await ad.stati() || {}, fatti = [];
   const coda = Object.entries(stati).filter(([id, S]) => id.length === 16 && deveSognare(S, now()))
@@ -179,7 +179,7 @@ if (main){
   try { const fs = await import("fs"), f = process.env.TATOEBA;
     if (f && fs.existsSync(f)){ tatoeba = fs.readFileSync(f, "utf8").split("\n").map(r => r.split("\t")).filter(c => c.length >= 2 && c[0] && c[1] && c[1].split(" ").length <= 14).map(c => [c[0].trim(), c[1].trim()]); console.log(`Tatoeba: ${tatoeba.length} coppie`); }
     else console.log("Tatoeba: file assente, salto"); } catch (e){ console.log("Tatoeba:", e.message); }
-  // traduttore libero (Argos, in Python): se manca, risponde null e il server usa il suo o salta l'inglese
+  // traduttore libero (OPUS-MT, in Python): se manca, risponde null e il server usa il suo o salta l'inglese
   const { execFileSync } = await import("child_process");
   const traduciLibero = async xs => { try { const out = execFileSync("python3", [new URL("./traduci.py", import.meta.url).pathname], { input: JSON.stringify(xs), maxBuffer: 64e6, timeout: 240000, stdio: ["pipe", "pipe", "ignore"] }); return JSON.parse(String(out)); } catch (e){ return null; } };
   const libero = (await traduciLibero(["The sea is blue."]))?.[0]; console.log("traduttore libero:", libero ? `pronto («The sea is blue.» → «${libero}»)` : "non disponibile");
