@@ -57,6 +57,11 @@ function normalize(s, id){
   if (o.user.hours.length < 24) o.user.hours = Array(24).fill(0).map((_,i)=>o.user.hours[i]||0);
   o.user.typing = Object.assign({n:0,cps:0,del:0}, o.user.typing||{});
   for (const k of ["feel","events","corpus","openers","labels","mood","studia","scoperte"]) o.mem[k] = arr(o.mem[k]);
+  // pulizia: i link finiti tra le frasi e le parole, e le "scoperte" di pagine di Google
+  o.mem.corpus = o.mem.corpus.filter(l => !/\b(https?|www)\b/.test(l));
+  for (const w of ["https","http","www"]) delete (o.words||{})[w];
+  o.mem.scoperte = o.mem.scoperte.filter(x => x && !/google/.test(x.fonte || "") && !/cookie|privacy|accedi|prima di continuare/i.test(x.x || ""));
+  o.mem.studia = o.mem.studia.filter(q => q && !/^(qualcosa|tutto|cose|roba|altro)$/i.test(String(q.x).trim()));
   for (const k of ["people","topics","react","reward","ironyLex"]) o.mem[k] = o.mem[k]||{};
   o.mem.ironyStats = Object.assign({asked:0,hist:[]}, o.mem.ironyStats||{}); o.mem.ironyStats.hist = arr(o.mem.ironyStats.hist);
   o.self = Object.assign({is:[],likes:[]}, o.self||{}); o.self.is = arr(o.self.is); o.self.likes = arr(o.self.likes); o.facts = o.facts||{};
@@ -585,9 +590,11 @@ function findDiscovery(q){
 }
 function studyReply(msg, a){
   const low = (a.low || msg.toLowerCase()).trim(), url = msg.match(/https?:\/\/[^\s]+/);
+  if (url && /share\.google|google\.[a-z.]+\/(search|url)|g\.co\//.test(url[0])) return { x: "questo è un link di google, non l'articolo. aprilo e mandami l'indirizzo della pagina vera", emo:"curious", cap:"i link «condividi» di Google portano a una pagina di Google, non al testo" };
   if (url){ addStudy({ k:"link", x:url[0] }); return { x: pick(["me lo leggo stanotte, mentre dormo","lo studio quando dormo. poi ti racconto","grazie. lo leggerò mentre dormo"]), cap:"lo studierà sul server mentre dorme" }; }
   let m = low.match(/^(?:puoi |potresti |dai |ora )?(?:studia|studiare|studiati|impara|imparare|informati(?: su)?|leggi|leggiti|approfondisci)\s+(?:(?:qualcosa|tutto|un po')\s+)?(?:(?:su|sul|sullo|sulla|sui|sugli|sulle|di|del|dello|della|dei|degli|delle)\s+)?(.{2,60}?)[.!?]*$/);
   if (m){ const x = m[1].replace(/^(il|lo|la|i|gli|le|l'|un|una|uno)\s+/, "").replace(/^l'/, "").trim();
+    if (/^(qualcosa|qualcosina|tutto|cose|roba|altro|di più)$/.test(x)) return { x: "cosa vuoi che studi? dimmi un argomento", emo:"curious", cap:"per esempio «studia i vulcani» o «studia la filosofia»" };
     if (x.split(" ").length <= 6){ addStudy({ k:"argomento", x }); return { x: pick([`va bene. stanotte studio ${x}`,`ok. quando dormo studio ${x}`]), cap:"lo cercherà da solo su Wikipedia, Wikibooks, Wikiversità e Wikisource mentre dorme" }; } }
   if (/(cosa|che) (hai|stai) (studiato|imparato|scoperto|studiando|leggendo|letto)|cosa studi\b/.test(low)){
     const D = S.mem.scoperte.slice(-3).reverse(), st = S.mem.studio;
@@ -824,7 +831,7 @@ $("#bar").addEventListener("submit", e=>{
     const newW = B.learn(S, msg, a, now()); updateTraits(a);
     // etichette automatiche (emoji, segnali) e ricordo dell'umore per capire il carattere
     const lab = etichetta(msg, a, AFFETTI);
-    nucleo.osserva(msg, lab);
+    nucleo.osserva(a.raw, lab);
     if (lab){ S.mem.labels.push({ x: B.tokenize(msg).join(" "), l: lab.lab, m: lab.mask, w: lab.w }); if (S.mem.labels.length > 300) S.mem.labels.shift(); }
     registra(S, msg, a, feel, now());
     S.energy.used++;

@@ -12,7 +12,7 @@
    Tutto come stringhe JSON: Firebase toglie array vuoti e null e rinumera gli array. */
 import { Maestro, SERVER } from "../nucleo/maestro.js";
 import { AFFETTI } from "../nucleo/rete.js";
-import { studia, riassunto } from "../nucleo/studio.js";
+import { studia, riassunto, spazzatura } from "../nucleo/studio.js";
 import { impacchetta, spacchetta } from "../nucleo/pacco.js";
 import { NEED, STOP, DAY } from "../brain.js";
 
@@ -60,7 +60,7 @@ export async function sognaTutti(ad, { budgetMs = 8*60e3, perMs = 75e3, studioMs
     let letture = [], st = null, scoperte = [], fatte = [];
     if (p >= 3 && ad.studio){
       const prev = (await ad.studio(id)) || {};
-      letture = arr(parse(prev.letture, []));
+      letture = arr(parse(prev.letture, [])).filter(x => typeof x === "string" && !spazzatura(x));   // pulisce anche le letture vecchie
       if (fetch){
         log(`${tag}: studia`);
         const r = await studia({ fetch, S, stato: parse(prev.stato, null), budgetMs: Math.min(studioMs, resta/3), ora: now, log });
@@ -74,7 +74,7 @@ export async function sognaTutti(ad, { budgetMs = 8*60e3, perMs = 75e3, studioMs
     // 2) sogno: allenamento
     const debito = Math.max(0, (E.need || 30000) - (E.dreamMs || 0));
     const ms = Math.max(2000, Math.min(perMs, resta - 3000, letture.length ? perMs : Math.max(8000, debito / COMPRESS)));
-    const M = new Maestro(), c = arr(S.mem && S.mem.corpus);
+    const M = new Maestro(), c = arr(S.mem && S.mem.corpus).filter(l => !/\b(https?|www)\b/.test(l));
     M.init({ saved, corpus: c, labels: labelsDi(S), seed: strSeed(id), letture, limiti: SERVER });
     const s0 = M.net.steps, h0 = M.net.H, l0 = M.net.L, ta = now(); let r = null, loss0 = null;
     while (now() - ta < ms){ r = M.impara(Math.min(1500, ms - (now() - ta) + 1)); if (loss0 == null && r.loss != null) loss0 = r.loss; }
@@ -86,7 +86,8 @@ export async function sognaTutti(ad, { budgetMs = 8*60e3, perMs = 75e3, studioMs
       updatedAt: at
     };
     // 3) cosa raccontare: scoperte, richieste esaudite, a che punto è lo studio, un sogno
-    if (scoperte.length) patch["mem/scoperte"] = [...arr(S.mem && S.mem.scoperte), ...scoperte.map(x => ({ ...x, detta: 0 }))].slice(-60);
+    const vecchie = arr(S.mem && S.mem.scoperte), pulite = vecchie.filter(x => x && !spazzatura(x.x || "") && !/google/.test(x.fonte || ""));
+    if (scoperte.length || pulite.length !== vecchie.length) patch["mem/scoperte"] = [...pulite, ...scoperte.map(x => ({ ...x, detta: 0 }))].slice(-60);
     if (fatte.some(f => f.fatto)){
       const ok = new Set(fatte.filter(f => f.fatto).map(f => f.richiesta));
       patch["mem/studia"] = arr(S.mem && S.mem.studia).map(q => ok.has(q.x) ? { ...q, fatto: at } : q);

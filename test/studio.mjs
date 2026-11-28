@@ -88,3 +88,14 @@ ok(S2.mem.studio && S2.mem.studio.pagine > 0, "lascia il riassunto dello studio 
 const N = spacchetta(db.nets.AAAABBBBCCCCDDDD), M2 = new Maestro(); M2.init({ saved: N, corpus });
 ok(db.nets.AAAABBBBCCCCDDDD.meta.by === "srv" && M2.lessico().length > 10, `il telefono riceve la rete con ${M2.lessico().length} parole studiate (es. ${M2.lessico().slice(0, 5).join(", ")})`);
 ok(JSON.parse(db.studio.AAAABBBBCCCCDDDD.letture).length === fatti[0].letture, "tiene le letture per le notti dopo");
+// --- pulizia: link di Google, richieste vaghe, spazzatura, Wikisource senza estratto
+{ const { spazzatura, lettore, VAGHE } = await import("../nucleo/studio.js");
+  ok(spazzatura("Prima di continuare su Google utilizziamo cookie e dati.") && !spazzatura("Il mare è una grande distesa di acqua salata."), "riconosce il testo di servizio delle pagine web");
+  const g = lettore(async () => ({ ok: true, url: "https://www.google.com/search?q=x", headers: { get: () => "text/html" }, text: async () => "<p>Prima di continuare su Google</p>" }));
+  let err = null; try { await g.web("https://share.google/abc"); } catch (e){ err = e.message; } ok(/Google/.test(err || ""), "non studia le pagine di Google: " + err);
+  ok(scegli({ ...S, mem: { ...S.mem, studia: [{ k: "argomento", x: "qualcosa" }] } }, nuovoStato()).every(j => j.q !== "qualcosa"), "ignora «studia qualcosa»");
+  ok(scegli({ ...S, name: "Agony", words: { ...S.words, agony: { c: 9 } } }, nuovoStato()).every(j => j.q !== "agony"), "non cerca il suo nome sul dizionario");
+  const ws = lettore(async u => { const q = Object.fromEntries(new URL(u).searchParams);
+    if (q.action === "parse") return { ok: true, json: async () => ({ parse: { text: "<div><p>C'era una volta un pezzo di legno che parlava come un bambino vero.</p><p>Maestro Ciliegia lo trovò nella sua bottega una mattina.</p></div>", links: [] } }) };
+    return { ok: true, json: async () => ({ query: { pages: [{ title: "Pinocchio/Capitolo I", extract: "" }] } }) }; });
+  const pg = await ws.pagina("wikisource", "Pinocchio/Capitolo I"); ok(pg && frasi(pg.testo).length === 2, "Wikisource: legge il capitolo anche senza estratto"); }
