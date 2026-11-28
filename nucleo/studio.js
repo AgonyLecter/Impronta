@@ -7,6 +7,10 @@
      4. un programma di materie, un capitolo per notte (Wikibooks, Wikiversità, poi Wikipedia)
      5. un classico di pubblico dominio, un capitolo per notte (Wikisource)
      6. i collegamenti delle pagine già lette che toccano i tuoi argomenti
+     7. le notizie della notte (feed RSS dei giornali e i feed che gli dai tu)
+     8. un libro da Progetto Gutenberg, un pezzo per notte; ogni tanto una citazione (Wikiquote)
+   Per ogni argomento prende anche i fatti certi da Wikidata (date, abitanti, capitali…).
+   Se in italiano non trova niente legge Wikipedia in inglese e la traduce (traduci() passato da fuori).
    Da ogni lettura tiene: frasi per allenare la rete (letture) e "scoperte" da raccontarti, sempre con la fonte.
    Tutte le fonti Wikimedia hanno la stessa interfaccia: un solo lettore per tutte.
    fetch è passato da fuori (Node 18+ o browser), così il modulo si prova anche senza rete. */
@@ -16,8 +20,12 @@ export const FONTI = {
   wikizionario: { host: "it.wiktionary.org",  nome: "Wikizionario" },
   wikibooks:    { host: "it.wikibooks.org",   nome: "Wikibooks" },
   wikiversita:  { host: "it.wikiversity.org", nome: "Wikiversità" },
-  wikisource:   { host: "it.wikisource.org",  nome: "Wikisource" }
+  wikisource:   { host: "it.wikisource.org",  nome: "Wikisource" },
+  wikiquote:    { host: "it.wikiquote.org",   nome: "Wikiquote" },
+  wikidata:     { host: "www.wikidata.org",   nome: "Wikidata" },
+  inglese:      { host: "en.wikipedia.org",   nome: "Wikipedia in inglese" }
 };
+export const FEED = [{ nome: "Il Post", url: "https://www.ilpost.it/feed/" }, { nome: "ANSA", url: "https://www.ansa.it/sito/notizie/topnews/topnews_rss.xml" }];
 export const MATERIE = ["matematica","geometria","algebra","fisica","chimica","biologia","astronomia","storia","geografia",
   "filosofia","letteratura italiana","informatica","latino","musica","storia dell'arte","economia","psicologia","scienze della terra"];
 export const CLASSICI = ["Le avventure di Pinocchio","I promessi sposi","Divina Commedia","Il principe","Operette morali",
@@ -55,6 +63,10 @@ export function frasi(testo, max = 120){
   }
   return out;
 }
+/* è inglese? (parole funzione più frequenti) */
+const EN = new Set("the and of to is was are were that this with for as by from which it its an be has have had on at or not their they".split(" "));
+const IT = new Set("il lo la di che e è un una per con non sono del della nel alla gli le dei delle anche come più".split(" "));
+export function inglese(testo){ let e = 0, i = 0; for (const w of tok(String(testo).slice(0, 3000))){ if (EN.has(w)) e++; if (IT.has(w)) i++; } return e >= 3 && e > i*2; }
 /* la prima frase che definisce l'argomento ("L'Etna è un vulcano…") */
 export function definizione(fr, titolo){
   const t = tok(titolo)[0] || "";
@@ -75,6 +87,26 @@ function numero(t){
   const s = r[1].toLowerCase(); let n = 0; for (let i=0;i<s.length;i++){ const v = ROM[s[i]], w = ROM[s[i+1]] || 0; n += v < w ? -v : v; } return n;
 }
 export function ordina(titoli){ return [...titoli].sort((a, b) => { const x = numero(a), y = numero(b); return x != null && y != null && x !== y ? x - y : a.localeCompare(b, "it"); }); }
+
+/* ---------- Wikidata: quali fatti tenere ---------- */
+export const PROPRIETA = { P31: "è", P279: "è un tipo di", P17: "paese", P131: "si trova in", P30: "continente", P36: "capitale", P1082: "abitanti", P2046: "superficie", P2044: "altitudine", P2048: "altezza",
+  P571: "fondazione", P569: "nascita", P570: "morte", P19: "luogo di nascita", P106: "professione", P27: "cittadinanza", P50: "autore", P170: "creatore", P577: "pubblicazione", P61: "scoperto da", P575: "scoperta", P37: "lingua", P38: "valuta", P6: "capo del governo", P35: "capo di stato", P2067: "massa" };
+const UNITA = { P2046: " km²", P2044: " m", P2048: " m", P2067: " kg" };
+const MESI = ["gennaio","febbraio","marzo","aprile","maggio","giugno","luglio","agosto","settembre","ottobre","novembre","dicembre"];
+function data(v){ const m = String(v.time).match(/([+-])(\d+)-(\d\d)-(\d\d)/); if (!m) return null; const y = +m[2] * (m[1] === "-" ? -1 : 1), ac = y < 0 ? " a.C." : "";
+  return v.precision >= 11 ? `${+m[4]} ${MESI[+m[3]-1]} ${Math.abs(y)}${ac}` : v.precision === 10 ? `${MESI[+m[3]-1]} ${Math.abs(y)}${ac}` : `${Math.abs(y)}${ac}`; }
+/* i fatti diventano frasi italiane semplici: per allenare la rete e per rispondere */
+export function frasiDaFatti(nome, F){
+  const n = String(nome), out = [];
+  for (const { P, v } of F.fatti || []){
+    const t = { P31: `${n} è ${v}.`, P279: `${n} è un tipo di ${v}.`, P17: `${n} si trova in ${v}.`, P131: `${n} si trova a ${v}.`, P30: `${n} è in ${v}.`, P36: `La capitale di ${n} è ${v}.`, P1082: `${n} ha ${v} abitanti.`,
+      P2046: `${n} ha una superficie di ${v}.`, P2044: `${n} è alto ${v} sul livello del mare.`, P2048: `${n} è alto ${v}.`, P571: `${n} è stato fondato nel ${v}.`, P569: `${n} è nato il ${v}.`, P570: `${n} è morto il ${v}.`,
+      P19: `${n} è nato a ${v}.`, P106: `${n} era ${v}.`, P27: `${n} aveva la cittadinanza ${v}.`, P50: `${n} è stato scritto da ${v}.`, P170: `${n} è stato creato da ${v}.`, P577: `${n} è stato pubblicato nel ${v}.`,
+      P61: `${n} è stato scoperto da ${v}.`, P575: `${n} è stato scoperto nel ${v}.`, P37: `A ${n} si parla ${v}.`, P38: `La valuta di ${n} è ${v}.`, P6: `Il capo del governo di ${n} è ${v}.`, P35: `Il capo di stato di ${n} è ${v}.`, P2067: `${n} ha una massa di ${v}.` }[P];
+    if (t) out.push((t.charAt(0).toUpperCase() + t.slice(1)).replace(/ nel (\d{1,2} \w+ )/, " il $1").replace(/\.\.$/, "."));
+  }
+  return out;
+}
 
 /* ---------- il lettore (API MediaWiki, uguale per tutte le fonti Wikimedia) ---------- */
 export function lettore(fetch, { timeout = 15000, pausa = 700, attesa = ms => new Promise(r => setTimeout(r, ms)) } = {}){
@@ -121,6 +153,51 @@ export function lettore(fetch, { timeout = 15000, pausa = 700, attesa = ms => ne
       const j = await api(fonte, { action: "query", list: "allpages", apprefix: radice + "/", aplimit: n });
       return ordina(arr(j.query && j.query.allpages).map(p => p.title));
     },
+    /* fatti certi da Wikidata per una voce di Wikipedia: [{ k: "abitanti", v: "2.761.632" }, …] e una descrizione */
+    async fatti(titolo, fonte = "wikipedia"){
+      const j = await api(fonte, { action: "query", prop: "pageprops", ppprop: "wikibase_item", redirects: 1, titles: titolo });
+      const pg = arr(j.query && j.query.pages)[0], q = pg && pg.pageprops && pg.pageprops.wikibase_item; if (!q) return null;
+      const e = await api("wikidata", { action: "wbgetentities", ids: q, props: "claims|descriptions|labels", languages: "it" });
+      const ent = e.entities && e.entities[q]; if (!ent) return null;
+      const out = [], serve = new Set();
+      for (const [P, nome] of Object.entries(PROPRIETA)){
+        const cl = arr(ent.claims && ent.claims[P]).filter(c => c.rank !== "deprecated").sort((a, b) => (b.rank === "preferred") - (a.rank === "preferred"))[0];
+        const dv = cl && cl.mainsnak && cl.mainsnak.datavalue; if (!dv) continue;
+        if (dv.type === "wikibase-entityid"){ out.push({ P, k: nome, id: dv.value.id }); serve.add(dv.value.id); }
+        else if (dv.type === "time") out.push({ P, k: nome, v: data(dv.value) });
+        else if (dv.type === "quantity") out.push({ P, k: nome, v: Number(dv.value.amount).toLocaleString("it-IT") + (UNITA[P] || "") });
+        else if (dv.type === "string") out.push({ P, k: nome, v: dv.value });
+      }
+      if (serve.size){ const l = await api("wikidata", { action: "wbgetentities", ids: [...serve].slice(0, 50).join("|"), props: "labels", languages: "it|en" });
+        for (const f of out) if (f.id){ const x = l.entities && l.entities[f.id]; f.v = x && x.labels && (x.labels.it || x.labels.en) ? (x.labels.it || x.labels.en).value : null; } }
+      return { id: q, nome: ent.labels && ent.labels.it ? ent.labels.it.value : titolo, descrizione: ent.descriptions && ent.descriptions.it ? ent.descriptions.it.value : null, fatti: out.filter(f => f.v).map(({ P, k, v }) => ({ P, k, v })) };
+    },
+    /* citazioni (Wikiquote): le righe tra virgolette, brevi */
+    async citazioni(q){
+      const [t] = await this.cerca("wikiquote", q, 1); if (!t) return [];
+      const p = await this.pagina("wikiquote", t); if (!p) return [];
+      return pulisci(p.testo).split(/\n+/).map(x => x.trim().replace(/^[-–•*\d.)\s]+/, "")).filter(x => /^[«"“].{20,240}[»"”]\.?$/.test(x) || (/^[A-ZÀ-Ú]/.test(x) && x.length > 30 && x.length < 200 && /[.!?]$/.test(x) && !/\(|\)|Citato in|Da /.test(x)))
+        .slice(0, 8).map(x => ({ x: x.replace(/^[«"“]|[»"”]\.?$/g, ""), autore: p.titolo, url: p.url }));
+    },
+    /* notizie da un feed RSS o Atom */
+    async rss(url){
+      const raw = await (await get(url)).text(), out = [];
+      const tag = (b, n) => { const m = b.match(new RegExp(`<${n}[^>]*>([\\s\\S]*?)</${n}>`, "i")); return m ? testoDaHtml(m[1].replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, "$1")).replace(/\s+/g, " ").trim() : ""; };
+      for (const b of raw.match(/<(item|entry)[\s>][\s\S]*?<\/\1>/gi) || []){
+        const titolo = tag(b, "title"), testo = tag(b, "description") || tag(b, "summary") || tag(b, "content");
+        const link = (b.match(/<link[^>]*href="([^"]+)"/i) || [])[1] || tag(b, "link");
+        if (titolo) out.push({ titolo, testo: testo.slice(0, 600), link, data: tag(b, "pubDate") || tag(b, "updated") });
+      }
+      return out.slice(0, 20);
+    },
+    /* un libro italiano di pubblico dominio da Progetto Gutenberg (tramite Gutendex) */
+    async gutenberg(n = 0){
+      const j = await (await get(`https://gutendex.com/books/?languages=it&sort=popular&page=${1 + Math.floor(n/32)}`)).json();
+      const b = arr(j.results)[n % 32]; if (!b) return null;
+      const f = Object.entries(b.formats || {}).find(([k]) => /^text\/plain/.test(k)); if (!f) return null;
+      return { id: b.id, titolo: b.title, autore: (arr(b.authors)[0] || {}).name || "", url: f[1] };
+    },
+    async testo(url){ return (await get(url)).text(); },
     async web(url){
       const r = await get(url), ct = (r.headers && r.headers.get && r.headers.get("content-type")) || "";
       if (ct && !/text\/(html|plain)/.test(ct)) throw new Error("non è una pagina di testo");
@@ -134,7 +211,7 @@ export function lettore(fetch, { timeout = 15000, pausa = 700, attesa = ms => ne
 }
 
 /* ---------- curiosità: cosa studiare stanotte ---------- */
-export function nuovoStato(){ return { visti: {}, coda: [], materie: {}, materia: 0, libro: null, classico: 0, pagine: 0, frasi: 0, storia: [] }; }
+export function nuovoStato(){ return { visti: {}, coda: [], materie: {}, materia: 0, libro: null, classico: 0, pagine: 0, frasi: 0, storia: [], notti: 0, gut: null, gutN: 0 }; }
 export const VAGHE = new Set(["qualcosa","qualcosina","tutto","cose","roba","altro","niente","nulla","quello","questo","ciò","di più"]);
 /* parole da chat, non argomenti: comandi, lodi, saluti, verbi e avverbi */
 const NON_ARGOMENTI = new Set("studia studiare studiato impara imparare imparato leggi leggere cerca cercare dimmi parlami scrivi guarda ascolta senti bravo brava bravissimo bravissima grazie ciao buongiorno buonanotte buonasera scusa allora quindi però perché davvero sempre spesso mai magari forse proprio tanto troppo bene male niente nulla qualcosa sicuro certo okay dai vabbè".split(" "));
@@ -145,7 +222,7 @@ function paroleTue(S){
 }
 function argomentiTuoi(S){ return paroleTue(S).filter(argomento);
 }
-export function scegli(S, st, { max = 6 } = {}){
+export function scegli(S, st, { max = 10 } = {}){
   const jobs = [], visto = k => !!st.visti[k], add = j => { if (jobs.length < max && !jobs.some(x => x.k === j.k) && !visto(j.k)) jobs.push(j); };
   // 1. le tue richieste
   for (const r of arr(S.mem && S.mem.studia)) if (r && !r.fatto && !VAGHE.has(String(r.x).toLowerCase().trim())){
@@ -162,6 +239,10 @@ export function scegli(S, st, { max = 6 } = {}){
   const m = MATERIE[st.materia % MATERIE.length]; add({ k: "materia:" + m + ":" + ((st.materie[m] && st.materie[m].i) || 0), tipo: "materia", materia: m, perche: "sto studiando " + m });
   // 5. un classico
   add({ k: "classico:" + (st.libro ? st.libro.titolo + ":" + st.libro.i : st.classico), tipo: "classico", perche: "leggo un libro" });
+  // 7. le notizie della notte, 8. un pezzo di libro da Gutenberg, ogni tanto una citazione
+  add({ k: "notizie:" + (st.notti || 0), tipo: "notizie", perche: "leggo le notizie" });
+  add({ k: "gutenberg:" + (st.gut ? st.gut.id + ":" + st.gut.pos : "n" + (st.gutN || 0)), tipo: "gutenberg", perche: "leggo un libro" });
+  if ((st.notti || 0) % 3 === 1 && tue[0]) add({ k: chiave("wikiquote", tue[(st.notti || 0) % Math.min(5, tue.length)]), tipo: "citazione", q: tue[(st.notti || 0) % Math.min(5, tue.length)], perche: "cerco cosa ne hanno detto" });
   // 6. collegamenti che toccano i tuoi argomenti
   const mie = new Set(tue.slice(0, 60));
   for (const c of st.coda){ if (jobs.length >= max) break; if (tok(c.t).some(w => mie.has(w))) add({ k: chiave(c.f, c.t), tipo: "pagina", fonte: c.f, titolo: c.t, perche: `l'ho trovato leggendo «${c.da}»` }); }
@@ -169,30 +250,47 @@ export function scegli(S, st, { max = 6 } = {}){
 }
 
 /* ---------- studiare ---------- */
-export async function studia({ fetch, S, stato, budgetMs = 45000, maxPagine = 8, ora = Date.now, log = () => {}, pausa = 700 }){
-  const st = Object.assign(nuovoStato(), stato || {}); st.visti = st.visti || {}; st.coda = arr(st.coda); st.storia = arr(st.storia);
-  const L = lettore(fetch, { pausa }), t0 = ora(), letture = [], scoperte = [], fatte = [];
+export async function studia({ fetch, S, stato, budgetMs = 45000, maxPagine = 10, ora = Date.now, log = () => {}, pausa = 700, traduci = null }){
+  const st = Object.assign(nuovoStato(), stato || {}); st.visti = st.visti || {}; st.coda = arr(st.coda); st.storia = arr(st.storia); st.notti = (st.notti || 0) + 1;
+  const L = lettore(fetch, { pausa }), t0 = ora(), letture = [], scoperte = [], fatte = [], notizie = [], citazioni = [];
+  // testo in inglese: lo traduce (se c'è un traduttore) e lo tratta come italiano; altrimenti lo lascia stare
+  const inItaliano = async (testo, tante = 120) => {
+    if (!inglese(testo)) return { fr: frasi(testo, tante), tradotto: false };
+    if (!traduci) return { fr: [], tradotto: false };
+    const en = frasi(testo, tante); if (!en.length) return { fr: [], tradotto: false };
+    const it = (await traduci(en)).filter(x => x && !inglese(x));
+    return { fr: it, tradotto: true };
+  };
+  const conFatti = async (titolo, fonte, sc) => {   // fatti certi da Wikidata: frasi per la rete e dati per rispondere
+    try { const F = await L.fatti(titolo, fonte); if (!F || !F.fatti.length) return;
+      const nome = fonte === "inglese" ? F.nome : titolo, fr = frasiDaFatti(nome, F); letture.push(...fr);
+      if (sc){ sc.fatti = F.fatti.slice(0, 8); if (F.descrizione) sc.descrizione = F.descrizione; }
+    } catch (e){ log(`  fatti ${titolo}: ${e.message}`); }
+  };
   const tempo = () => ora() - t0 < budgetMs;
-  const impara = (pag, fonte, job, { tante = 120, scoperta = true } = {}) => {
-    const fr = frasi(pag.testo, tante); if (!fr.length) return 0;
+  const impara = async (pag, fonte, job, { tante = 120, scoperta = true } = {}) => {
+    const { fr, tradotto } = await inItaliano(pag.testo, tante); if (!fr.length) return 0;
     letture.push(...fr);
-    if (scoperta){ const d = definizione(fr, pag.titolo); if (d) scoperte.push({ t: ora(), argomento: pag.titolo, x: d.length > 260 ? d.slice(0, 257).replace(/\s\S*$/, "") + "…" : d, fonte: FONTI[fonte] ? FONTI[fonte].nome : fonte, url: pag.url, perche: job.perche }); }
+    if (scoperta){ const d = definizione(fr, pag.titolo); if (d){ const sc = { t: ora(), argomento: pag.titolo, x: d.length > 260 ? d.slice(0, 257).replace(/\s\S*$/, "") + "…" : d, fonte: (FONTI[fonte] ? FONTI[fonte].nome : fonte) + (tradotto && fonte !== "inglese" ? " (tradotto dall'inglese)" : tradotto ? " (tradotta)" : ""), url: pag.url, perche: job.perche };
+      scoperte.push(sc); if (fonte === "wikipedia" || fonte === "inglese") await conFatti(pag.titolo, fonte, sc); } }
     // i collegamenti diventano curiosità per le notti dopo (quelli sui tuoi argomenti passano avanti)
     if (fonte === "wikipedia") for (const t of arr(pag.link).slice(0, 40)) if (!st.visti[chiave("wikipedia", t)] && !st.coda.some(c => c.t === t)) st.coda.push({ f: "wikipedia", t, da: pag.titolo });
     if (st.coda.length > 400) st.coda.splice(0, st.coda.length - 400);
     st.pagine++; st.frasi += fr.length; return fr.length;
   };
-  const leggi = async (fonte, titolo, job, o) => { const p = await L.pagina(fonte, titolo); if (!p) return 0; st.visti[chiave(fonte, p.titolo)] = ora(); return impara(p, fonte, job, o); };
+  const leggi = async (fonte, titolo, job, o) => { const p = await L.pagina(fonte, titolo); if (!p) return 0; st.visti[chiave(fonte, p.titolo)] = ora(); return await impara(p, fonte, job, o); };
   let pagine = 0;
   for (const job of scegli(S, st)){
     if (!tempo() || pagine >= maxPagine) break;
     let n = 0;
     try {
       if (job.tipo === "web"){
-        const p = await L.web(job.url); n = impara(p, new URL(job.url).hostname, job);
+        const p = await L.web(job.url); n = await impara(p, new URL(job.url).hostname, job);
       } else if (job.tipo === "argomento" || job.tipo === "parola"){
         const [t] = await L.cerca(job.fonte, job.q, 1);
         if (t) n = await leggi(job.fonte, t, job, { tante: job.tipo === "parola" ? 20 : 120 });
+        // niente in italiano? Wikipedia in inglese, tradotta
+        if (!n && job.tipo === "argomento" && traduci){ const [te] = await L.cerca("inglese", job.q, 1); if (te) n = await leggi("inglese", te, { ...job, perche: job.perche + " · c'era solo in inglese" }); }
         if (job.materia) st.materia = MATERIE.indexOf(job.materia);   // se chiedi una materia, il programma passa a quella
       } else if (job.tipo === "pagina"){
         n = await leggi(job.fonte, job.titolo, job); st.coda = st.coda.filter(c => c.t !== job.titolo);
@@ -210,6 +308,25 @@ export async function studia({ fetch, S, stato, budgetMs = 45000, maxPagine = 8,
         if (t){ n = await leggi(M.fonte, t, { ...job, perche: `sto studiando ${m} (${M.i + 1}/${M.capitoli.length})` }, { scoperta: M.i > 0 || M.fonte === "wikipedia" }); }   // l'indice di un manuale non è una scoperta
         M.i++; if (M.i >= M.capitoli.length){ M.i = 0; M.capitoli = null; M.giri = (M.giri || 0) + 1; }
         st.materia = (st.materia + 1) % MATERIE.length;
+      } else if (job.tipo === "notizie"){
+        const feed = [...arr(S.mem && S.mem.feed).map(f => typeof f === "string" ? { nome: new URL(f).hostname, url: f } : f), ...FEED];
+        for (const f of feed.slice(0, 6)){ if (!tempo()) break;
+          try { const it = await L.rss(f.url);
+            for (const x of it.slice(0, 6)){ const testo = `${x.titolo}. ${x.testo}`, { fr } = await inItaliano(testo, 6);
+              notizie.push({ t: ora(), titolo: x.titolo, testo: x.testo.slice(0, 280), fonte: f.nome, url: x.link }); letture.push(...fr); n += fr.length; }
+          } catch (e){ log(`  feed ${f.nome}: ${e.message}`); } }
+      } else if (job.tipo === "citazione"){
+        const cs = await L.citazioni(job.q); citazioni.push(...cs.slice(0, 3).map(c => ({ ...c, t: ora(), argomento: job.q }))); letture.push(...cs.map(c => c.x)); n = cs.length;
+      } else if (job.tipo === "gutenberg"){
+        if (!st.gut){ const b = await L.gutenberg(st.gutN || 0); st.gutN = (st.gutN || 0) + 1; if (b) st.gut = { ...b, pos: 0 }; }
+        if (st.gut){
+          let t = await L.testo(st.gut.url); t = t.replace(/\r/g, "");
+          const a = t.search(/\*\*\* ?START OF[^\n]*\n/), z = t.search(/\*\*\* ?END OF/);
+          t = t.slice(a >= 0 ? t.indexOf("\n", a) + 1 : 0, z > 0 ? z : undefined).replace(/([^\n])\n(?!\n)/g, "$1 ");
+          const pezzo = t.slice(st.gut.pos, st.gut.pos + 30000); st.gut.pos += 30000;
+          const fr = frasi(pezzo, 250); letture.push(...fr); n = fr.length;
+          if (st.gut.pos >= t.length) st.gut = null;
+        }
       } else if (job.tipo === "classico"){
         if (!st.libro){
           const titolo = CLASSICI[st.classico % CLASSICI.length]; st.classico++;
@@ -230,7 +347,7 @@ export async function studia({ fetch, S, stato, budgetMs = 45000, maxPagine = 8,
   st.storia.push({ t: ora(), pagine, frasi: letture.length }); if (st.storia.length > 60) st.storia.shift();
   // i "visti" più vecchi di 60 giorni si possono ristudiare (le pagine cambiano, e ripassare fa bene)
   for (const [k, t] of Object.entries(st.visti)) if (ora() - t > 60*86400e3) delete st.visti[k];
-  return { stato: st, letture, scoperte, fatte };
+  return { stato: st, letture, scoperte, fatte, notizie, citazioni };
 }
 
 /* riassunto piccolo da mettere nello stato dell'app (trasparenza: cosa studia e dove è arrivato) */
@@ -238,5 +355,6 @@ export function riassunto(st, ora = Date.now()){
   const materie = {};
   for (const [m, M] of Object.entries(st.materie || {})) materie[m] = M.capitoli ? `${M.i}/${M.capitoli.length}${M.giri ? ` · ${M.giri}° giro` : ""}` : M.giri ? `${M.giri} giri` : "da iniziare";
   return { t: ora, pagine: st.pagine || 0, frasi: st.frasi || 0, materie, prossima: MATERIE[(st.materia || 0) % MATERIE.length],
-    libro: st.libro ? `${st.libro.titolo} (${st.libro.i}/${st.libro.capitoli.length})` : null, curiosita: arr(st.coda).slice(-5).map(c => c.t) };
+    libro: st.libro ? `${st.libro.titolo} (${st.libro.i}/${st.libro.capitoli.length})` : null, curiosita: arr(st.coda).slice(-5).map(c => c.t),
+    gutenberg: st.gut ? `${st.gut.titolo}${st.gut.autore ? " · " + st.gut.autore : ""}` : null };
 }
