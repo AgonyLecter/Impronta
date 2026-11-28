@@ -15,7 +15,7 @@ await p.waitForTimeout(4000);
 const idle=async()=>{for(let i=0;i<120;i++){ await p.waitForTimeout(300); const ok=await p.evaluate(()=>window.__impronta&&window.__impronta.idle&&!document.querySelector('#sheet.on')); if(ok){ await p.waitForTimeout(400); if(await p.evaluate(()=>window.__impronta.idle)) return; } else await p.evaluate(()=>document.querySelector('#sheet').classList.remove('on')); } };
 const say=async m=>{await idle();await p.fill('#inp',m);await p.press('#inp','Enter');await p.waitForTimeout(600);await idle();};
 const lab=async(k)=>{await p.evaluate(()=>document.querySelector('#sheet').classList.remove('on'));for(let i=0;i<5;i++) await p.click('#logo');await p.waitForTimeout(400);await p.click(`[data-l="${k}"]`);await p.waitForTimeout(3000);await idle();};
-await say('ciao');await say('Agony');
+await say('Agony');await say('luca');
 await lab('ph'); await lab('ph'); await lab('ph');
 await p.evaluate(()=>document.querySelector('#sheet').classList.remove('on'));
 const msgs=['mi chiamo luca','oggi sono felice','ho mangiato la pizza con mia mamma','domani ho la verifica di storia','mi piace il calcio','il mare è bello','sono stanco','voglio andare al mare','il mio cane si chiama rex','ho sedici anni','che bello il sole','ho giocato a calcio','mia mamma cucina bene','la scuola è noiosa','ciao amico','sono contento','mi piace la musica','oggi piove','ho finito i compiti','stasera esco','ho visto un film','mi piace il gelato','sono a casa','che bella giornata','ti voglio bene','domani vado al mare','il calcio è bello','ho fame','mia sorella è simpatica','buonanotte','ancora una cosa','ciao ciao','ultima parola','basta','ok'];

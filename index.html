@@ -157,13 +157,21 @@ canvas.dots{display:block;width:100%;margin:4px 0 2px}
 .tl .entry.srv::before{background:var(--red)}
 .tl .entry.g::before{background:var(--mid)}
 .num{font-family:Doto,monospace;font-weight:800;color:var(--ink)}
-#boot{position:fixed;inset:0;background:#000;z-index:40;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:18px;transition:opacity .7s,filter .7s}
-#boot.out{opacity:0;filter:blur(8px);pointer-events:none}
-#bootc{width:min(46vw,200px);height:min(46vw,200px)}
-#bootl{font-family:Doto,monospace;font-weight:900;font-size:30px;letter-spacing:.04em;min-height:36px}
-#bootl span{animation:ch .5s both}
-#boots{margin:0;min-height:96px;font:11px/1.75 "Geist Mono",monospace;color:var(--mid);text-align:left;white-space:pre;letter-spacing:.03em}
+#boot{position:fixed;inset:0;background:#000;z-index:40;transition:opacity .55s,filter .55s;overflow:hidden}
+#boot.out{opacity:0;filter:blur(6px);pointer-events:none}
+#boot.fade #bootl,#boot.fade #boots,#boot.fade #bootk{opacity:0;transition:opacity .35s}
+#boot.morph #bootl,#boot.morph #bootk{opacity:0;transform:translateY(-8px);filter:blur(4px);transition:opacity .4s,transform .4s,filter .4s}
+#bootc{position:absolute;inset:0;width:100%;height:100%;display:block}
+#bootl{position:absolute;left:0;right:0;top:calc(env(safe-area-inset-top) + 9dvh);text-align:center;font-family:Doto,monospace;font-weight:900;font-size:34px;letter-spacing:.04em;min-height:40px}
+#bootl span{display:inline-block;animation:bl .5s var(--ease) both}
+#bootl span.g{color:var(--red)}
+@keyframes bl{0%{opacity:0;transform:translateY(6px);filter:blur(3px)}60%{opacity:1;filter:none}100%{opacity:1;transform:none}}
+#boots{position:absolute;left:22px;right:22px;bottom:calc(env(safe-area-inset-bottom) + 34px);margin:0;font:11px/1.9 "Geist Mono",monospace;color:var(--mid);white-space:pre-wrap;letter-spacing:.03em}
+#boots div{animation:bl .35s var(--ease) both}
 #boots b{color:var(--ink);font-weight:400}
+#boots i{display:inline-block;width:5px;height:5px;border-radius:50%;background:var(--red);margin-right:9px;vertical-align:middle;transition:background .3s}
+#boots i.ok{background:var(--ink)}
+#bootk{position:absolute;right:22px;top:calc(env(safe-area-inset-top) + 16px);font:10px "Geist Mono",monospace;color:var(--dim);letter-spacing:.08em}
 #flash{position:fixed;inset:0;background:#fff;opacity:0;pointer-events:none;z-index:20;transition:opacity 1.2s}
 #flash.on{opacity:.9;transition:none}
 @media (prefers-reduced-motion:reduce){#said .ch,.gl,#mine.go{animation:none}#flash{display:none}}
@@ -196,7 +204,7 @@ canvas.dots{display:block;width:100%;margin:4px 0 2px}
 </div>
 <div id="sheet"><div class="pane" id="pane"></div></div>
 <div id="flash"></div>
-<div id="boot"><canvas id="bootc"></canvas><div id="bootl"></div><pre id="boots"></pre></div>
+<div id="boot"><canvas id="bootc"></canvas><div id="bootl"></div><div id="bootk">tocca per saltare</div><div id="boots"></div></div>
 <script>
 /* file sempre aggiornati: alla prima volta che il service worker prende il controllo, ricarica una volta */
 if ("serviceWorker" in navigator && location.protocol === "https:"){

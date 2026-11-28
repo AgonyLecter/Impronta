@@ -25,10 +25,14 @@ const glifi=async()=>await p.evaluate(()=>!!document.querySelector('#said .glyph
 const say=async m=>{await idle();await p.fill('#inp',m);await p.press('#inp','Enter');await p.waitForTimeout(600);await idle(); return said();};
 const dialogo=[];
 const tell=async m=>{ const r=await say(m); dialogo.push('tu:  '+m+'\nlui: '+(await glifi()?'[glifi] ':'')+r+'   · '+((await p.textContent('#cap'))||'').trim()); return r; };
-await tell('ciao'); await tell('Agony');
+await idle(); const primo=await said(); ok(/come mi chiami/.test(primo) && !(await glifi()),'appena nato chiede come chiamarlo, senza glifi: «'+primo+'»');
+let r0=await tell('Agony'); ok(/come ti chiami/.test(r0),'poi chiede il tuo nome: «'+r0+'»');
+r0=await tell('mi chiamo Luca');
+const st0=await p.evaluate(()=>{const S=JSON.parse(localStorage.impronta_state); return {n:S.name,u:S.userName,g:S.glyphs.length};});
+ok(st0.n==='Agony' && st0.u==='Luca' && st0.g===0 && /raccontami|chiedimi/.test(r0),'si presenta e si comincia: '+JSON.stringify(st0)+' «'+r0+'»');
 const meta=await p.textContent('#meta'); ok(/frase/.test(meta),'appena nato è già in fase «frase»: '+meta);
 let r=await tell('come stai?'); ok(r.length>0 && !(await glifi()),'parla subito con le parole, non con i glifi');
-await tell('mi chiamo luca'); await tell('mi piace il mare e la musica');
+r0=await tell('come mi chiamo?'); ok(/luca/i.test(r0),'si ricorda il tuo nome: «'+r0+'»'); await tell('mi piace il mare e la musica');
 r=await tell('cosa sai dei vulcani?');
 ok(/vulcan/.test(r) && /magma|struttura geologica/.test(r),'«cosa sai dei vulcani?» → legge Wikipedia dal vivo');
 const st=await p.evaluate(()=>{const S=JSON.parse(localStorage.impronta_state); return {sc:S.mem.scoperte.map(s=>s.argomento), q:S.mem.studia.map(q=>q.x)};});
