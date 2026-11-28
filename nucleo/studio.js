@@ -111,16 +111,17 @@ export function frasiDaFatti(nome, F){
 /* ---------- il lettore (API MediaWiki, uguale per tutte le fonti Wikimedia) ---------- */
 export function lettore(fetch, { timeout = 15000, pausa = 700, attesa = ms => new Promise(r => setTimeout(r, ms)) } = {}){
   // educato con Wikipedia: una richiesta alla volta, con una pausa; se dice "troppe richieste" (429) aspetta e riprova
-  let ultima = 0;
+  let ultima = 0; const conti = { richieste: 0, attese: 0, msAttesa: 0 };
   async function get(url){
     for (let prova = 0; ; prova++){
       const gap = ultima + pausa - Date.now(); if (gap > 0) await attesa(gap); ultima = Date.now();
       const ac = typeof AbortController !== "undefined" ? new AbortController() : null, tm = ac ? setTimeout(() => ac.abort(), timeout) : 0;
       let r; try { r = await fetch(url, { headers: { "User-Agent": UA, "Api-User-Agent": UA }, signal: ac && ac.signal }); } finally { clearTimeout(tm); }
+      conti.richieste++;
       if (r.ok) return r;
       if ((r.status === 429 || r.status === 503) && prova < 3){
-        const ra = r.headers && r.headers.get && +r.headers.get("retry-after");
-        await attesa(Math.min(20000, (ra > 0 ? ra*1000 : 0) || 2500*Math.pow(2, prova))); continue;
+        const ra = r.headers && r.headers.get && +r.headers.get("retry-after"), ms = Math.min(20000, (ra > 0 ? ra*1000 : 0) || 2500*Math.pow(2, prova));
+        conti.attese++; conti.msAttesa += ms; await attesa(ms); continue;
       }
       throw new Error("HTTP " + r.status);
     }
@@ -131,6 +132,7 @@ export function lettore(fetch, { timeout = 15000, pausa = 700, attesa = ms => ne
     return (await get(u.toString())).json();
   }
   return {
+    conti,
     async cerca(fonte, testo, n = 3){
       const j = await api(fonte, { action: "query", list: "search", srsearch: testo, srlimit: n, srnamespace: 0 });
       return arr(j.query && j.query.search).map(s => s.title);
