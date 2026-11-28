@@ -37,6 +37,9 @@ export function pulisci(testo){
     .replace(/^=+.*=+$/gm, "\n")                          // titoli di sezione
     .replace(/[ \t]+/g, " ").trim();
 }
+/* testo di servizio delle pagine web (cookie, accessi, avvisi): non è conoscenza */
+const SPAZZATURA = /\b(cookie|privacy|consenso|accedi|account google|javascript|browser|prima di continuare|termini di servizio|iscriviti|newsletter|abbonati|pubblicità|clicca qui|tutti i diritti riservati)\b/i;
+export const spazzatura = x => SPAZZATURA.test(x) || /https?:|www\./i.test(x);
 /* frasi complete e leggibili, né troppo corte né troppo lunghe */
 export function frasi(testo, max = 120){
   const out = [];
@@ -45,7 +48,7 @@ export function frasi(testo, max = 120){
     for (const f of p.split(/(?<=[.!?;])\s+(?=["«(]?[A-ZÀ-Ú0-9])/)){
       const x = f.trim(), n = x.split(/\s+/).length;
       if (n < 5 || n > 45 || !/[.!?;]$/.test(x)) continue;
-      if (/[\\=<>|]|https?:|\bISBN\b|^\W/.test(x)) continue;
+      if (/[\\=<>|]|https?:|\bISBN\b|^\W/.test(x) || spazzatura(x)) continue;
       if (tok(x).length < n*.6) continue;               // troppi numeri o simboli
       out.push(x.replace(/;$/, ".")); if (out.length >= max) return out;
     }
@@ -93,8 +96,15 @@ export function lettore(fetch, { timeout = 15000 } = {}){
     async pagina(fonte, titolo){
       const j = await api(fonte, { action: "query", prop: "extracts|links", explaintext: 1, exsectionformat: "plain", redirects: 1, titles: titolo, pllimit: 80, plnamespace: 0 });
       const p = arr(j.query && j.query.pages)[0];
-      if (!p || p.missing || !p.extract) return null;
-      return { titolo: p.title, testo: p.extract, link: arr(p.links).map(l => l.title), url: `https://${FONTI[fonte].host}/wiki/${encodeURIComponent(p.title.replace(/ /g, "_"))}` };
+      if (!p || p.missing) return null;
+      const url = `https://${FONTI[fonte].host}/wiki/${encodeURIComponent(p.title.replace(/ /g, "_"))}`;
+      if (p.extract && p.extract.length > 200) return { titolo: p.title, testo: p.extract, link: arr(p.links).map(l => l.title), url };
+      // ripiego: il testo come appare sulla pagina (Wikisource monta i capitoli da altre pagine e l'estratto resta vuoto)
+      const q = await api(fonte, { action: "parse", page: p.title, prop: "text|links", redirects: 1, disableeditsection: 1 });
+      const html = q.parse && (typeof q.parse.text === "string" ? q.parse.text : q.parse.text && q.parse.text["*"]);
+      if (!html) return p.extract ? { titolo: p.title, testo: p.extract, link: arr(p.links).map(l => l.title), url } : null;
+      const testo = testoDaHtml(html.replace(/<(table|sup|style)[\s\S]*?<\/\1>/gi, " ").replace(/<div[^>]*class="[^"]*(navbox|noprint|mw-references|reference)[^"]*"[\s\S]*?<\/div>/gi, " "));
+      return { titolo: p.title, testo, link: arr(q.parse.links).filter(l => !l.ns && l.exists !== false).map(l => l.title || l["*"]).filter(Boolean), url };
     },
     // i capitoli di un libro (Wikibooks, Wikisource): le sottopagine
     async sottopagine(fonte, radice, n = 80){
@@ -104,21 +114,26 @@ export function lettore(fetch, { timeout = 15000 } = {}){
     async web(url){
       const r = await get(url), ct = (r.headers && r.headers.get && r.headers.get("content-type")) || "";
       if (ct && !/text\/(html|plain)/.test(ct)) throw new Error("non è una pagina di testo");
+      const fin = r.url || url, host = new URL(fin).hostname;
+      // i link di condivisione di Google portano a pagine di Google (accesso, cookie), non all'articolo
+      if (/(^|\.)google\.[a-z.]+$|^share\.google$|^consent\./.test(host)) throw new Error("è una pagina di Google, non l'articolo: serve il link vero");
       const raw = await r.text(); const tit = (raw.match(/<title[^>]*>([^<]*)<\/title>/i) || [])[1];
-      return { titolo: (tit || new URL(url).hostname).trim().slice(0, 80), testo: /<html|<body|<p[ >]/i.test(raw) ? testoDaHtml(raw) : raw, url };
+      return { titolo: (tit || host).trim().slice(0, 80), testo: /<html|<body|<p[ >]/i.test(raw) ? testoDaHtml(raw) : raw, url: fin };
     }
   };
 }
 
 /* ---------- curiosità: cosa studiare stanotte ---------- */
 export function nuovoStato(){ return { visti: {}, coda: [], materie: {}, materia: 0, libro: null, classico: 0, pagine: 0, frasi: 0, storia: [] }; }
+export const VAGHE = new Set(["qualcosa","qualcosina","tutto","cose","roba","altro","niente","nulla","quello","questo","ciò","di più"]);
 function paroleTue(S){
-  return Object.entries(S.words || {}).filter(([w, v]) => w.length > 3 && !STOP.has(w) && v && v.c >= 2).sort((a, b) => b[1].c - a[1].c).map(([w]) => w);
+  const nomi = new Set([S.name, S.userName].filter(Boolean).map(x => String(x).toLowerCase()));
+  return Object.entries(S.words || {}).filter(([w, v]) => w.length > 3 && !STOP.has(w) && !nomi.has(w) && !/^(https?|www|com)$/.test(w) && v && v.c >= 2).sort((a, b) => b[1].c - a[1].c).map(([w]) => w);
 }
 export function scegli(S, st, { max = 6 } = {}){
   const jobs = [], visto = k => !!st.visti[k], add = j => { if (jobs.length < max && !jobs.some(x => x.k === j.k) && !visto(j.k)) jobs.push(j); };
   // 1. le tue richieste
-  for (const r of arr(S.mem && S.mem.studia)) if (r && !r.fatto){
+  for (const r of arr(S.mem && S.mem.studia)) if (r && !r.fatto && !VAGHE.has(String(r.x).toLowerCase().trim())){
     if (r.k === "link") add({ k: "web:" + r.x, tipo: "web", url: r.x, perche: "me l'hai chiesto tu", richiesta: r.x });
     else add({ k: chiave("wikipedia", r.x), tipo: "argomento", fonte: "wikipedia", q: r.x, perche: "me l'hai chiesto tu", richiesta: r.x, materia: MATERIE.includes(String(r.x).toLowerCase()) ? String(r.x).toLowerCase() : null });
   }

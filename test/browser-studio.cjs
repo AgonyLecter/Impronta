@@ -28,6 +28,9 @@ let r=await say('studia la fotosintesi'); ok(/stanotte studio fotosintesi|quando
 r=await say('cosa sai del mare?'); ok(/distesa di acqua salata/.test(r), 'cosa sai del mare? → «'+r+'» · '+(await cap()));
 r=await say('cosa sai dei vulcani?'); ok(/non so ancora niente/.test(r), 'cosa sai dei vulcani? → «'+r+'»');
 r=await say('ti mando questo https://it.wikipedia.org/wiki/Luna'); ok(/stanotte|dormo/.test(r), 'un link → «'+r+'»');
+r=await say('studia qualcosa'); ok(/cosa vuoi che studi/.test(r), 'studia qualcosa → «'+r+'»');
+r=await say('https://share.google/NdVRRKXN5IEOtFv3Y'); ok(/link di google/.test(r), 'link di Google → «'+r+'»');
+ok(await p.evaluate(()=>{const S=JSON.parse(localStorage.impronta_state); return !S.words.https && !S.mem.corpus.some(l=>/https/.test(l));}), 'i link non diventano parole');
 r=await say('cosa hai studiato?'); ok(/ho studiato/.test(r), 'cosa hai studiato? → «'+r+'»');
 const q=await p.evaluate(()=>JSON.parse(localStorage.impronta_state).mem.studia.map(q=>q.k+':'+q.x+(q.fatto?' (fatto)':'')));
 ok(q.length===4, 'richieste per il server: '+q.join(' · '));

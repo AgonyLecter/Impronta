@@ -68,7 +68,7 @@ export function reflect(toks){
 
 /* ---------- analisi ---------- */
 export function analyze(msg){
-  const raw = msg.trim();
+  const raw = msg.replace(/https?:\/\/\S+|www\.\S+/gi, " ").replace(/\s+/g, " ").trim();   // i link non sono parole da imparare
   const low0 = raw.toLowerCase().replace(/[’`]/g,"'").replace(/(.)\1{2,}/g,"$1");
   const rtoks = tokenize(low0);
   const toks = rtoks.flatMap(t => (ABBR_MAP[t] || t).split(" "));
