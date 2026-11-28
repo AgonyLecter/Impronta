@@ -14,7 +14,7 @@ import { Maestro, SERVER } from "../nucleo/maestro.js";
 import { AFFETTI } from "../nucleo/rete.js";
 import { studia, riassunto, spazzatura } from "../nucleo/studio.js";
 import { impacchetta, spacchetta } from "../nucleo/pacco.js";
-import { NEED, STOP, DAY } from "../brain.js";
+import { NEED, STOP, DAY, START } from "../brain.js";
 
 const arr = v => Array.isArray(v) ? v : v ? Object.values(v) : [];
 const strSeed = s => { let h = 2166136261; for (const c of s){ h ^= c.charCodeAt(0); h = Math.imul(h, 16777619); } return h >>> 0; };
@@ -27,7 +27,7 @@ export function fase(S, now){
   let k = 0; for (const w in S.words || {}) if (!STOP.has(w) && w.length > 2) k++;
   const d = S.born ? Math.floor((now - S.born)/DAY) : 0; let p = 0;
   for (let i=1;i<5;i++) if (k >= NEED[i][0] && d >= NEED[i][1]) p = i;
-  return Math.max(p, S.forcePhase || 0);
+  return Math.max(p, START, S.forcePhase || 0);
 }
 /* chi deve sognare: dorme adesso, oppure si è addormentato e non ha finito i sogni */
 export function deveSognare(S, now){
@@ -87,7 +87,8 @@ export async function sognaTutti(ad, { budgetMs = 8*60e3, perMs = 75e3, studioMs
     };
     // 3) cosa raccontare: scoperte, richieste esaudite, a che punto è lo studio, un sogno
     const vecchie = arr(S.mem && S.mem.scoperte), pulite = vecchie.filter(x => x && !spazzatura(x.x || "") && !/google/.test(x.fonte || ""));
-    if (scoperte.length || pulite.length !== vecchie.length) patch["mem/scoperte"] = [...pulite, ...scoperte.map(x => ({ ...x, detta: 0 }))].slice(-60);
+    const gia = new Set(pulite.map(x => String(x.argomento).toLowerCase())), nuove = scoperte.filter(x => !gia.has(String(x.argomento).toLowerCase()));   // già letta dal telefono: niente doppioni
+    if (nuove.length || pulite.length !== vecchie.length) patch["mem/scoperte"] = [...pulite, ...nuove.map(x => ({ ...x, detta: 0 }))].slice(-60);
     if (fatte.some(f => f.fatto)){
       const ok = new Set(fatte.filter(f => f.fatto).map(f => f.richiesta));
       patch["mem/studia"] = arr(S.mem && S.mem.studia).map(q => ok.has(q.x) ? { ...q, fatto: at } : q);

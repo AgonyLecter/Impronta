@@ -34,7 +34,9 @@ Web app statica (GitHub Pages da `main`), tutta in italiano, nessuna API di IA a
 | `test/` | test (vedi sotto) |
 
 ## Concetti chiave
-- **Fasi**: seme → eco → parola → frase → voce (`NEED` in brain.js: parole + giorni). Laboratorio nascosto: tocca 5 volte il logo (fase +1, +giorni, sveglia, sogna, dormi).
+- **Fasi**: seme → eco → parola → frase → voce (`NEED` in brain.js). Per scelta dell'utente **nasce già in fase «frase»** (`START = 3`: parla, rete attiva, studia); «voce» a 80 parole + 3 giorni. Le prime tre restano solo per compagni vecchi. Laboratorio nascosto: tocca 5 volte il logo (fase +1, +giorni, sveglia, sogna, dormi).
+- **Studio dal vivo**: «cosa sai di X?» / «studia X» → `liveStudy()` in app.js legge Wikipedia dal telefono (`nucleo/studio.js`, `Nucleo.leggi`), risponde con la fonte; di notte il server approfondisce.
+- **Articoli**: `S.mem.art` ricorda l'articolo che l'utente usa con ogni parola (`withArt`).
 - **Vincolo del vocabolario**: le frasi di tipo `tpl/refl/rete` devono usare parole insegnate (+ grammatica innata per fase, `innate()`, + dalla fase 3 le parole studiate, `B.setStudiate`); le fonti `ans/def/mem/senso/praise/chiede/sonno/studio` sono esenti.
 - **Stato** `S` in localStorage `impronta_state`, sincronizzato su Firebase RTDB `impronta/<ID>` (ID 16 caratteri = "codice di legame"). La rete NON è nello stato: sta in IndexedDB `impronta` / chiave `impronta_nucleo`.
 - **Sonno** (app.js, sezione SONNO): energia per fase, pisolino `NAP[p]` minuti, `S.energy = {sleepStart, sleepUntil, need, dreamMs, dreamt, wakes, rt}`. `dream()` allena finché `dreamMs >= need`; `sleepResume()` recupera i sogni al ritorno; `wakeForced()` = risveglio con umore.
@@ -43,7 +45,7 @@ Web app statica (GitHub Pages da `main`), tutta in italiano, nessuna API di IA a
 
 ## Come testare
 - Logica pura (Node): `node test/insegnamenti.mjs`, `node test/gradienti.mjs` e `node test/sogni-server.mjs`, `node test/crescita.mjs`, `node test/studio.mjs` (tutte le righe devono dire `ok`), `node test/maestro.mjs` (crescita + emozioni su frasi nuove, ~30 s).
-- Browser: `node test/browser.cjs` e `node test/browser-studio.cjs` usa Playwright (già installato nell'ambiente cloud) e serve i file con `page.route` su `http://impronta.local/` — **non avviare server locali** (in questo ambiente il comando viene bloccato). `window.__impronta.idle` dice quando l'app ha finito di rispondere.
+- Browser: `node test/browser.cjs`, `node test/browser-studio.cjs` e `node test/browser-nascita.cjs` (Wikipedia simulata con `route`) usa Playwright (già installato nell'ambiente cloud) e serve i file con `page.route` su `http://impronta.local/` — **non avviare server locali** (in questo ambiente il comando viene bloccato). `window.__impronta.idle` dice quando l'app ha finito di rispondere.
 - Firebase, gstatic e Wikipedia sono bloccati dal proxy nell'ambiente cloud: sincronizzazione e studio vero non sono testabili lì (lo studio sì, con fonti finte).
 
 ## Problemi noti

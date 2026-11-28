@@ -35,19 +35,26 @@ export class Maestro {
      le più frequenti per prime, finché c'è posto; le altre diventano <unk> */
   setLetture(letture = []){
     this.libro = []; this.libroTest = []; this.libroSet = new Set();
-    const L = letture.map(x => typeof x === "string" ? x : x && x.x).filter(Boolean); if (!L.length){ this.aggiornaAllow(); return; }
+    this.aggiungiLetture(letture);
+  }
+  /* letture in più (anche al volo, mentre parli: "cosa sai dei vulcani?" → legge Wikipedia e impara) */
+  aggiungiLetture(letture = []){
+    const L = letture.map(x => typeof x === "string" ? x : x && x.x).filter(Boolean); if (!L.length){ this.aggiornaAllow(); return 0; }
     const freq = new Map(); for (const l of L) for (const w of tok(l)) freq.set(w, (freq.get(w) || 0) + 1);
     let posto = Math.max(0, this.lim.vmax - this.net.V);
-    const nuove = [...freq].filter(([w, c]) => c >= 2 && !this.net.idx.has(w) && w.length < 24).sort((a, b) => b[1] - a[1]);
+    const minimo = L.length < 200 ? 1 : 2;   // poche frasi lette al volo: entra ogni parola
+    const nuove = [...freq].filter(([w, c]) => c >= minimo && !this.net.idx.has(w) && w.length < 24).sort((a, b) => b[1] - a[1]);
     const ok = new Set(); for (const [w] of nuove){ if (posto-- <= 0) break; ok.add(w); }
+    const base = this.libro.length + this.libroTest.length; let n = 0;
     L.forEach((line, i) => {
       const ws = tok(line); if (ws.length < 3) return;
       const ids = ws.map(w => { if (this.net.idx.has(w)) return this.net.idx.get(w); if (ok.has(w)) return this.net.word(w); return 2; });
       for (const w of ws) if (!this.tue.has(w) && this.net.idx.has(w)) this.studiate.add(w);
       const ex = { ids, lm: 1, lab: null, mask: null, line };
-      (i % 25 === 12 && this.libroTest.length < 40 ? this.libroTest : this.libro).push(ex); this.libroSet.add(ws.join(" "));
+      ((base + i) % 25 === 12 && this.libroTest.length < 40 ? this.libroTest : this.libro).push(ex); this.libroSet.add(ws.join(" ")); n++;
     });
-    this.aggiornaAllow();
+    if (this.libro.length > 30000) this.libro.splice(0, this.libro.length - 30000);
+    this.aggiornaAllow(); return n;
   }
   aggiornaAllow(){ this.allow = new Set(["</s>", ...this.tue, ...[...this.studiate].filter(w => this.net.idx.has(w))]); }
   /* le parole che conosce dai libri e non da te */

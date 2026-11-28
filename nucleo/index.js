@@ -100,6 +100,8 @@ export class Nucleo {
     this.info = await this.call("init", { saved, corpus, labels, seed });
     await this.salva(); this.emit(); return this.info;
   }
+  /* frasi lette al volo (Wikipedia dal telefono): entrano nel suo allenamento come letture */
+  async leggi(frasi){ if (!this.ready || !frasi || !frasi.length) return null; try { const r = await this.call("leggi", { frasi }); this.info = { ...this.info, ...r }; this.emit(); return r; } catch (e){ return null; } }
   /* per vederla */
   async connettoma(max = 420){ if (!this.ready) return null; try { return await this.call("connettoma", { max }); } catch (e){ return null; } }
   async attiva(text){ if (!this.ready) return null; try { return await this.call("attiva", { text }); } catch (e){ return null; } }

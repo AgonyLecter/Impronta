@@ -24,9 +24,9 @@ const say=async m=>{await idle();await p.fill('#inp',m);await p.press('#inp','En
 await p.waitForTimeout(6000); await idle();
 const log=await p.evaluate(()=>JSON.parse(localStorage.impronta_state).log.filter(l=>l.w==='c').slice(-4).map(l=>l.x));
 ok(log.some(x=>/ho studiato (mare|geometria)\. ho scoperto che/.test(x)), 'al ritorno racconta una scoperta: «'+log.find(x=>/studiato/.test(x))+'»');
-let r=await say('studia la fotosintesi'); ok(/stanotte studio fotosintesi|quando dormo studio fotosintesi/.test(r), 'studia la fotosintesi → «'+r+'»');
+let r=await say('studia la fotosintesi'); ok(/fotosintesi/.test(r) && /stanotte/.test(r), 'studia la fotosintesi (Wikipedia irraggiungibile) → «'+r+'»');
 r=await say('cosa sai del mare?'); ok(/distesa di acqua salata/.test(r), 'cosa sai del mare? → «'+r+'» · '+(await cap()));
-r=await say('cosa sai dei vulcani?'); ok(/non so ancora niente/.test(r), 'cosa sai dei vulcani? → «'+r+'»');
+r=await say('cosa sai dei vulcani?'); ok(/vulcani/.test(r) && /stanotte/.test(r), 'cosa sai dei vulcani? (Wikipedia irraggiungibile) → «'+r+'»');
 r=await say('ti mando questo https://it.wikipedia.org/wiki/Luna'); ok(/stanotte|dormo/.test(r), 'un link → «'+r+'»');
 r=await say('studia qualcosa'); ok(/cosa vuoi che studi/.test(r), 'studia qualcosa → «'+r+'»');
 r=await say('https://share.google/NdVRRKXN5IEOtFv3Y'); ok(/link di google/.test(r), 'link di Google → «'+r+'»');

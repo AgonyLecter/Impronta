@@ -4,7 +4,8 @@ import { Ritmo, liveRead, prophecy, prophecyHit } from "./senso.js";
 import { Nucleo, AFFETTI, etichetta, conferma, registra, analizza } from "./nucleo/index.js";
 import { impacchetta, spacchetta } from "./nucleo/pacco.js";
 import { cervello, galassia, puntini, tile, segmenti, titolo } from "./hud.js";
-const { PHASES, LIMITS, ENERGY, NEED, HOUR, DAY, DAYS, G, STOP } = B;
+import { lettore, frasi as frasiDa, definizione } from "./nucleo/studio.js";
+const { PHASES, LIMITS, ENERGY, NEED, HOUR, DAY, DAYS, G, STOP, START } = B;
 
 /* ================= CONFIG ================= */
 const FB_CONFIG = {
@@ -42,11 +43,11 @@ const smooth = x => { x = clamp(x,0,1); return x*x*(3-2*x); };
 
 /* ================= STATO ================= */
 function blank(id){ return { v:2, id, born:0, name:"", userName:"", firstWord:"", firstMsg:null, awaitName:false, forcePhase:0,
-  phase:0, words:{}, phrases:{}, quotes:[], likes:[], dislikes:[], defs:{}, self:{is:[],likes:[]}, facts:{},
+  phase:3, words:{}, phrases:{}, quotes:[], likes:[], dislikes:[], defs:{}, self:{is:[],likes:[]}, facts:{},
   traits:{calore:0,ironia:0,curiosita:0,coraggio:0,calma:0,malinconia:0},
   user:{msgs:0,chars:0,emoji:{},emojiMsgs:0,lower:0,excl:0,dot:0,abbr:{},hours:Array(24).fill(0),firstLens:[],lens:[],typing:{n:0,cps:0,del:0}},
   mem:{feel:[],events:[],people:{},topics:{},corpus:[],ask:null,openers:[],react:{},reward:{},labels:[],mood:[],pendingQ:null,confirm:null,ironyLex:{},ironyStats:{asked:0,hist:[]},studia:[],scoperte:[],studio:null},
-  log:[], diary:[], diaryUnread:0, glyphs:[], revealed:false,
+  log:[], diary:[], diaryUnread:0, glyphs:[], revealed:true,
   energy:{used:0,sleepUntil:0}, lastSeen:0, sessions:0, sparks:{}, hurt:0, promise:0, litSeen:0, sound:true, netSync:0, netUp:0, updatedAt:0 }; }
 const arr = v => Array.isArray(v) ? v : v ? Object.values(v) : [];
 function normalize(s, id){
@@ -139,7 +140,7 @@ const voiceBase = () => 520 + S.traits.ironia*140 - S.traits.malinconia*120;
 /* ================= CALCOLI ================= */
 function known(){ let k=0; for(const w in S.words) if(!STOP.has(w) && w.length>2) k++; return k; }
 function dayN(){ return S.born ? Math.floor((now()-S.born)/DAY)+1 : 0; }
-function phase(){ const k=known(), d=dayN()-1; let p=0; for(let i=1;i<5;i++) if(k>=NEED[i][0] && d>=NEED[i][1]) p=i; return Math.max(p, S.forcePhase||0); }
+function phase(){ const k=known(), d=dayN()-1; let p=0; for(let i=1;i<5;i++) if(k>=NEED[i][0] && d>=NEED[i][1]) p=i; return Math.max(p, START, S.forcePhase||0); }
 function isAsleep(){ return S.energy.sleepUntil > now(); }
 function contentWords(min=1){ return Object.keys(S.words).filter(w=>!STOP.has(w) && w.length>2 && S.words[w].c>=min); }
 function progress(){ // avanzamento verso la fase successiva (0..1) e se aspetta solo il tempo
@@ -595,6 +596,7 @@ function studyReply(msg, a){
   let m = low.match(/^(?:puoi |potresti |dai |ora )?(?:studia|studiare|studiati|impara|imparare|informati(?: su)?|leggi|leggiti|approfondisci)\s+(?:(?:qualcosa|tutto|un po')\s+)?(?:(?:su|sul|sullo|sulla|sui|sugli|sulle|di|del|dello|della|dei|degli|delle)\s+)?(.{2,60}?)[.!?]*$/);
   if (m){ const x = m[1].replace(/^(il|lo|la|i|gli|le|l'|un|una|uno)\s+/, "").replace(/^l'/, "").trim();
     if (/^(qualcosa|qualcosina|tutto|cose|roba|altro|di più)$/.test(x)) return { x: "cosa vuoi che studi? dimmi un argomento", emo:"curious", cap:"per esempio «studia i vulcani» o «studia la filosofia»" };
+    if (x.split(" ").length <= 6 && navigator.onLine !== false) return { live: x, perche: "me l'hai chiesto tu" };
     if (x.split(" ").length <= 6){ addStudy({ k:"argomento", x }); return { x: pick([`va bene. stanotte studio ${x}`,`ok. quando dormo studio ${x}`]), cap:"lo cercherà da solo su Wikipedia, Wikibooks, Wikiversità e Wikisource mentre dorme" }; } }
   if (/(cosa|che) (hai|stai) (studiato|imparato|scoperto|studiando|leggendo|letto)|cosa studi\b/.test(low)){
     const D = S.mem.scoperte.slice(-3).reverse(), st = S.mem.studio;
@@ -606,10 +608,37 @@ function studyReply(msg, a){
   m = low.match(/(?:cosa sai (?:di|del|dello|della|dei|degli|delle|sul|sullo|sulla|sui|su)|che cos'è|cos'è|cosa è|chi è|chi era|cosa sono|che cosa sono|parlami (?:di|del|dello|della|dei|degli|delle))\s+(?:il |lo |la |i |gli |le |l'|un |una )?([a-zàèéìòù' ]{2,40}?)\s*\??$/);
   if (m){ const q = m[1].trim(), d = findDiscovery(q);
     if (d){ d.detta = 1; return { x: lowerFirst(d.x), cap: `l'ha studiato da solo · ${d.fonte}` }; }
+    if (/^cosa sai|^parlami/.test(low) || !S.words[q.split(" ")[0]]){ if (navigator.onLine !== false) return { live: q, perche: "me l'hai chiesto tu" }; }
     addStudy({ k:"argomento", x:q });   // non lo sa: lo studierà
     if (/^cosa sai|^parlami/.test(low)) return { x: `di ${q} non so ancora niente. lo studio stanotte`, emo:"curious" };
   }
   return null;
+}
+/* studio dal vivo: legge Wikipedia dal telefono mentre gli parli, impara le frasi, ti risponde con la fonte.
+   Di notte, sul server, approfondisce (collegamenti, materie, libri). */
+let reading = false;
+async function liveStudy(q, perche){
+  if (reading) return;
+  reading = true; F.dream = 1;
+  await say(pick(["aspetta, vado a leggere","un attimo. leggo su wikipedia","non lo so ancora. vado a studiarlo"]), { emo:"curious", raw:true, src:"studio", cap:`sta leggendo Wikipedia su «${q}»…` });
+  let ris = null;
+  try {
+    const L = lettore((u, o) => fetch(u, { signal: o && o.signal }), { pausa: 150, timeout: 12000 });
+    const [t] = await L.cerca("wikipedia", q, 1);
+    const p = t && await L.pagina("wikipedia", t);
+    if (p){ const fr = frasiDa(p.testo, 120), d = definizione(fr, p.titolo);
+      if (d) ris = { p, fr, d: d.length > 260 ? d.slice(0, 257).replace(/\s\S*$/, "") + "…" : d }; }
+  } catch (e){ console.warn("studio dal vivo", e && e.message); }
+  F.dream = 0; reading = false;
+  if (!ris){ addStudy({ k:"argomento", x:q }); await say(`non sono riuscito a leggere niente su ${q}. ci riprovo stanotte`, { emo:"sad", raw:true, src:"studio", cap:"forse sei offline, o Wikipedia non ha una voce con quel nome" }); return; }
+  const { p, fr, d } = ris, before = STUDIATE.length;
+  const r = await nucleo.leggi(fr); await lessico();
+  S.mem.scoperte.push({ t: now(), argomento: p.titolo, x: d, fonte: "Wikipedia", url: p.url, perche, detta: 1 }); if (S.mem.scoperte.length > 60) S.mem.scoperte.splice(0, S.mem.scoperte.length - 60);
+  save(); render(); ripple(.6, 55);
+  const nuove = Math.max(0, STUDIATE.length - before);
+  await say(`ho letto «${p.titolo.toLowerCase()}». ${lowerFirst(d)}`, { emo:"happy", raw:true, src:"studio",
+    cap: `fonte: Wikipedia · ${fr.length} frasi nella sua rete${nuove ? ` · ${nuove} parole nuove` : ""} · stanotte approfondisce` });
+  addStudy({ k:"argomento", x:q, vivo: 1 });   // il server, di notte, segue i collegamenti
 }
 async function tellDiscovery(){
   const nuove = S.mem.scoperte.filter(x => !x.detta); if (!nuove.length) return false;
@@ -788,7 +817,7 @@ $("#bar").addEventListener("submit", e=>{
       const nm = (a.toks[0] || msg.split(/\s+/)[0]).slice(0,12);
       S.name = nm.charAt(0).toUpperCase()+nm.slice(1); S.awaitName = false; B.learn(S, msg, a, now()); save(); render();
       await say(S.name.toLowerCase(), {glyph:true, emo:"happy"});
-      setCap("ogni parola che userà, l'avrà imparata da te");
+      setCap("impara da te e studia da solo. prova: «cosa sai dei vulcani?»");
       return;
     }
     if (S.awaitUserName && !a.name && a.toks.length <= 2 && !a.q){ a.name = a.toks[a.toks.length-1]; a.intent = "name"; }
@@ -839,6 +868,7 @@ $("#bar").addEventListener("submit", e=>{
     if (hit){ oracleP = null; await revealOracle(); await say(phase()>=2 ? "lo sapevo" : "!", {emo:"happy", raw:true, cap:"sapeva cosa avresti scritto"}); }
     else if (declared){ oracleP = null; hideOracle();
       await say(declared.caught ? "ahah. l'avevo capito" : "ah! ci sono cascato. me lo segno", { emo: declared.caught ? "smirk" : "surprised", raw:true, src:"chiede", cap:"sta imparando quando sei ironico" }); }
+    else if (studyAns && studyAns.live){ oracleP = null; hideOracle(); await liveStudy(studyAns.live, studyAns.perche); }
     else if (studyAns){ oracleP = null; hideOracle(); await say(studyAns.x, { emo: studyAns.emo || "curious", raw:true, src:"studio", cap: studyAns.cap || "" }); }
     else if (confirmed){ oracleP = null; hideOracle();
       const st = S.mem.ironyStats, accTxt = st && st.hist.length >= 3 ? ` · indovina il tuo tono ${Math.round(st.hist.reduce((x,y)=>x+y,0)/st.hist.length*100)}% delle volte` : "";
