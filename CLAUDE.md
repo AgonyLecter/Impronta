@@ -1,5 +1,7 @@
 # impronta.
 
+> **Passaggio di consegne:** leggi `docs/PROSSIMI-PASSI.md` (stato, cosa è verificato, cosa fare dopo).
+
 Compagno digitale che nasce vuoto e impara a parlare **solo con le parole dell'utente**.
 Web app statica (GitHub Pages da `main`), tutta in italiano, nessuna API di IA a pagamento: ogni
 "intelligenza" è scritta a mano e gira nel telefono. L'utente parla italiano: rispondigli in italiano.
