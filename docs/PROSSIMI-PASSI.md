@@ -83,3 +83,7 @@ infanzia curiosa → opinioni e qualche contraddizione → maturità), 6 identit
 7 piaceri e paure nati da ciò che gli succede. Tutto con numeri veri, che cambiano piano, visibili.
 - FATTO 1 e 2 (`nucleo/interiore.js`, `nucleo/ricordi.js`, scheda «dentro di lui», test `interiore`, `ricordi`, `browser-dentro`).
 - PROSSIMO: 3 desideri e obiettivi (si appoggiano su bisogni e ricordi), poi 4 il rapporto.
+
+### 8. Insegnare parole e studiare con tutte le fonti — FATTO
+`nucleo/lezioni.js` (tanti modi di insegnare, correggere, sinonimi, contrari, elenco) e `liveStudy` multi-fonte
+(Wikizionario, Wikisource, Wikibooks/Wikiversità, Wikipedia + Wikidata + Wikiquote). Test: `lezioni`, `browser-insegna`.
