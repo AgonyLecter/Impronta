@@ -23,16 +23,17 @@ Web app statica (GitHub Pages da `main`), tutta in italiano, nessuna API di IA a
 | `index.html` | markup + tutto il CSS (token in `:root`), schermata di accensione `#boot` |
 | `app.js` | app: stato, Firebase, volto a punti (canvas), voce, flussi (nascita, fasi, sonno, risveglio, accoglienza), input, schede (parole, diario, mente, come ti vede, menu, laboratorio) |
 | `brain.js` | cervello a regole: analisi dell'italiano, memoria, insegnamenti (nome, fatti, gusti), domande, riflessione io↔tu, curiosità ("cos'è X?"), rinforzo (impara quando usare "bravissimo"), ironia (stima, domande, vocabolario personale). `reply()` genera candidati e li valuta |
-| `hud.js` | grafica custom (canvas, nessuna dipendenza): `cervello()` rete 3D vera che rivive l'ultima frase, `galassia()` parole nello spazio dei significati, `puntini()`, `tile()`, `segmenti()`, `titolo()` |
+| `hud.js` | grafica custom (canvas, nessuna dipendenza): `cervello()` ologramma (sagoma di cervello a micro-punti, la rete vera dentro, sinapsi ad arco, piano di scansione, anello delle 8 emozioni, etichette sui neuroni) che rivive l'ultima frase, `cuore()` cuore di particelle che si forma man mano (notti di gusti + cose amate), batte col suo umore, con le cose amate in orbita, `galassia()` parole nello spazio dei significati, `puntini()`, `tile()`, `segmenti()`, `titolo()` |
 | `mondo.js` | il mondo fuori dal telefono: `intento()` riconosce meteo/luoghi/fatti/sinonimi/inglese/notizie/citazioni/«segui»; Open-Meteo, Nominatim, Wikidata, WordNet |
 | `dati/` | `parole-it.json` (sinonimi, "è un tipo di") e `en-it.json` dal WordNet (CC BY 3.0), rifatti con `tools/prepara-wordnet.mjs` |
 | `senso.js` | ritmo di scrittura, lettura dal vivo mentre scrivi, profezia in glifi |
 | `nucleo/rete.js` | rete GRU scritta a mano: BPTT + Adam, testa affettiva (8 emozioni), trigrammi di lettere, crescita in larghezza (`widen`, `widenD`) e profondità (`deepen`, strati residui), softmax campionata, salvataggio base64 (anche 16 bit) |
 | `nucleo/maestro.js` | autoapprendimento: curriculum (frasi utente + istinto), autovalutazione su esempi tenuti da parte, politica di crescita, `senti`, `parla` |
-| `nucleo/istinto.js` | ~200 frasi etichettate per le emozioni (servono a capire, MAI a parlare) |
+| `nucleo/istinto.js` | ~600 frasi etichettate per le emozioni (servono a capire, MAI a parlare) |
 | `nucleo/etichette.js` | etichette automatiche da emoji/segnali, `conferma`, `valenza` |
 | `nucleo/carattere.js` | modello dell'utente: tratti, collegamenti argomenti/orari/umore |
 | `nucleo/studio.js` | studio da solo: lettore Wikimedia + link, fatti Wikidata (`fatti`, `frasiDaFatti`), Wikiquote, RSS, Gutenberg, Wikipedia inglese con `traduci()`; curiosità, scoperte |
+| `nucleo/gusti.js` | le SUE preferenze: per temi/materie/autori/libri misura con la sua rete sorpresa, progresso, emozioni (pesate dal suo carattere `S.traits`); media mobile + isteresi (`SOGLIA`); `perche()` con numeri veri; `scegliParole()` tra sinonimi; `rispondi()` a «qual è il tuo libro preferito?», «chi preferisci tra X e Y?», «perché?» |
 | `nucleo/traduttore.js` | il suo traduttore inglese→italiano: encoder-decoder GRU scritto a mano, allenato su Tatoeba, `valuta`/`somiglianza` |
 | `nucleo/pacco.js` | rete in pezzi per Firebase |
 | `nucleo/worker.js` | la rete gira in un Web Worker (fallback nel thread principale) |
@@ -50,16 +51,19 @@ Web app statica (GitHub Pages da `main`), tutta in italiano, nessuna API di IA a
 - **Stato** `S` in localStorage `impronta_state`, sincronizzato su Firebase RTDB `impronta/<ID>` (ID 16 caratteri = "codice di legame"). La rete NON è nello stato: sta in IndexedDB `impronta` / chiave `impronta_nucleo`.
 - **Sonno** (app.js, sezione SONNO): energia per fase, pisolino `NAP[p]` minuti, `S.energy = {sleepStart, sleepUntil, need, dreamMs, dreamt, wakes, rt}`. `dream()` allena finché `dreamMs >= need`; `sleepResume()` recupera i sogni al ritorno; `wakeForced()` = risveglio con umore.
 - **Sogni ad app chiusa**: `syncNetUp()` (si addormenta / va in background mentre dorme) carica la rete in `impronta_nets/<ID>` = `{meta:{at,steps,H,by}, net:"<json>"}`; `syncNetDown()` (inizio di `welcome` e al ritorno) importa quella del server con `Nucleo.importa`. Il server aggiorna solo `energy/dreamMs`, `energy/srv`, `energy/dreamt`, `diary`, `diaryUnread`, `updatedAt`.
+- **Gusti** (`S.mem.gusti`, scritti dal server ogni notte): lo studio restituisce `gruppi` (da dove viene ogni frase), `sogna.mjs` li misura con la rete appena allenata e scrive nel diario quando cambia idea; lo studio segue un collegamento dell'argomento preferito. Scheda «i suoi gusti» da «mente». Le chiavi passano da `chiave()` (Firebase non accetta `. # $ / [ ]`).
 - **Ironia**: `B.ironyEstimate` (rete + regole + `S.mem.ironyLex`); nel dubbio chiede (`S.mem.confirm`), statistiche in `S.mem.ironyStats`.
 
 ## Come testare
-- Logica pura (Node): `node test/insegnamenti.mjs`, `node test/gradienti.mjs` e `node test/sogni-server.mjs`, `node test/crescita.mjs`, `node test/studio.mjs` (tutte le righe devono dire `ok`), `node test/maestro.mjs` (crescita + emozioni su frasi nuove, ~30 s).
+- Logica pura (Node): `node test/insegnamenti.mjs`, `node test/gradienti.mjs` e `node test/sogni-server.mjs`, `node test/crescita.mjs`, `node test/studio.mjs` (tutte le righe devono dire `ok`), `node test/maestro.mjs` (crescita + emozioni su frasi nuove, ~30 s), `node test/emozioni.mjs` (comprensione emotiva su due banchi di frasi mai viste, ~20 s), `node test/gusti.mjs` (gusti deterministici, legati al carattere, stabili).
+- Fonti dal vivo: workflow `sogni` lanciato a mano con `prova_fonti` = true (`tools/prova-fonti.mjs`, non tocca i compagni).
+- Grafica: per fotografare `cervello()`/`cuore()` fuori dall'app basta una pagina che importa `hud.js` (servita con `page.route`); `browser-studio.cjs` salva `mente.png` e `gusti.png` nella cartella temporanea.
 - Fonti e traduzione: `node test/fonti.mjs`, `node test/traduttore.mjs` (gradienti dell'encoder-decoder, impara, notte sul server).
 - Browser: `node test/browser.cjs`, `node test/browser-studio.cjs`, `node test/browser-nascita.cjs` e `node test/browser-mondo.cjs` (servizi esterni simulati con `route`; quest'ultimo usa `https://impronta.local` perché la posizione vuole una pagina sicura) usa Playwright (già installato nell'ambiente cloud) e serve i file con `page.route` su `http://impronta.local/` — **non avviare server locali** (in questo ambiente il comando viene bloccato). `window.__impronta.idle` dice quando l'app ha finito di rispondere.
 - Firebase, gstatic e Wikipedia sono bloccati dal proxy nell'ambiente cloud: sincronizzazione e studio vero non sono testabili lì (lo studio sì, con fonti finte).
 
 ## Problemi noti
-- Comprensione emotiva misurata ~20-35% su frasi mai viste: l'istinto è piccolo. Allargare `nucleo/istinto.js` (soprattutto ironia, tristezza, rabbia) è il miglioramento più efficace.
+- Comprensione emotiva su frasi mai viste (`node test/emozioni.mjs`, 40 giri): banco 1 ~68%, banco 2 scritto alla cieca ~43% (prima dell'allargamento dell'istinto: ~49% e ~35%). Le frasi lunghe e piene di parole nuove restano difficili. Non ritoccare l'istinto guardando il banco 2: è la misura onesta.
 - Le frasi inventate dalla rete con pochi dati sono a volte sconnesse: sono filtrate e hanno peso basso in fase 3.
 - La rete in fase 3-4 è pesata da `brain.js` (sezione 8 "voce"): attenzione a non farla vincere sulle risposte dirette.
 

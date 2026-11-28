@@ -15,6 +15,7 @@ import { AFFETTI } from "../nucleo/rete.js";
 import { studia, riassunto, spazzatura } from "../nucleo/studio.js";
 import { impacchetta, spacchetta } from "../nucleo/pacco.js";
 import { Traduttore, valuta, somiglianza } from "../nucleo/traduttore.js";
+import { misura, aggiorna as aggiornaGusti, scegliParole, perche, TIPI } from "../nucleo/gusti.js";
 import { NEED, STOP, DAY, START } from "../brain.js";
 
 const arr = v => Array.isArray(v) ? v : v ? Object.values(v) : [];
@@ -50,7 +51,7 @@ function campione(xs, n, r = Math.random){ if (xs.length <= n) return xs.slice()
    fetch = per studiare (null = niente studio)
    tatoeba = coppie [inglese, italiano] di Tatoeba (frasi naturali per parlare meglio + per imparare a tradurre)
    traduciLibero = traduttore libero già allenato (OPUS-MT), async frasi → frasi | null */
-export async function sognaTutti(ad, { budgetMs = 8*60e3, perMs = 75e3, studioMs = 45e3, tradMs = 20e3, fetch = null, tatoeba = null, traduciLibero = null, now = Date.now, log = console.log } = {}){
+export async function sognaTutti(ad, { budgetMs = 8*60e3, perMs = 75e3, studioMs = 45e3, tradMs = 20e3, fetch = null, tatoeba = null, traduciLibero = null, sinonimi = null, now = Date.now, log = console.log } = {}){
   const t0 = now(), stati = await ad.stati() || {}, fatti = [];
   const coda = Object.entries(stati).filter(([id, S]) => id.length === 16 && deveSognare(S, now()))
     .sort((a, b) => (b[1].energy.need - (b[1].energy.dreamMs||0)) - (a[1].energy.need - (a[1].energy.dreamMs||0)));
@@ -77,13 +78,13 @@ export async function sognaTutti(ad, { budgetMs = 8*60e3, perMs = 75e3, studioMs
     const puoTradurre = !!traduciLibero || suo();
 
     // 1) studio
-    let letture = [], st = null, scoperte = [], fatte = [], notizie = [], citazioni = [];
+    let letture = [], st = null, scoperte = [], fatte = [], notizie = [], citazioni = [], gruppi = [];
     if (p >= 3 && ad.studio){
       letture = arr(parse(prev.letture, [])).filter(x => typeof x === "string" && !spazzatura(x));   // pulisce anche le letture vecchie
       if (fetch){
         log(`${tag}: studia`);
         const r = await studia({ fetch, S, stato: parse(prev.stato, null), budgetMs: Math.min(studioMs, resta/3), ora: now, log, traduci: puoTradurre ? traduci : null });
-        st = r.stato; scoperte = r.scoperte; fatte = r.fatte; notizie = r.notizie || []; citazioni = r.citazioni || [];
+        st = r.stato; scoperte = r.scoperte; fatte = r.fatte; notizie = r.notizie || []; citazioni = r.citazioni || []; gruppi = r.gruppi || [];
         letture = [...letture, ...r.letture]; if (letture.length > MAXL) letture = letture.slice(-MAXL);
       }
     }
@@ -136,6 +137,27 @@ export async function sognaTutti(ad, { budgetMs = 8*60e3, perMs = 75e3, studioMs
         patch.diary = diary.slice(-40); patch.diaryUnread = (S.diaryUnread || 0) + 1; patch["energy/dreamt"] = 1;
       }
     }
+    // 5) i suoi gusti: misurati con la rete appena allenata, cambiano piano (nucleo/gusti.js)
+    if (p >= 3 && (gruppi.length || sinonimi)){
+      try {
+        const G0 = S.mem && S.mem.gusti, misure = gruppi.map(g => { const x = misura(M.net, g.frasi); return x && { tipo: g.tipo, nome: g.nome, ...x }; }).filter(Boolean);
+        let G = misure.length ? aggiornaGusti(G0, misure, S.traits || {}, at) : (G0 || null);
+        if (G && sinonimi && letture.length){
+          const freq = new Map(); for (const l of letture.slice(-4000)) for (const w of String(l).toLowerCase().split(/[^\p{L}]+/u)) if (w.length > 3) freq.set(w, (freq.get(w) || 0) + 1);
+          const gr = {}; for (const [w] of [...freq].sort((a, b) => b[1] - a[1]).slice(0, 400)){ const sy = sinonimi[w] && sinonimi[w][0]; if (!sy || !sy.length) continue; const ws = [w, ...sy].filter(x => !x.includes(" ")); const k = [...ws].sort()[0]; if (!gr[k] && Object.keys(gr).length < 40) gr[k] = ws; }
+          G = { ...G, parole: scegliParole(M.net, gr, freq, G.parole || {}) };
+        }
+        if (G){
+          patch["mem/gusti"] = G;
+          const nuove = (G.storia || []).filter(c => c.t === at);
+          const NOMI = { temi: "argomento", materie: "materia", autori: "autore", libri: "libro" }, diary = patch.diary || arr(S.diary);
+          for (const c of nuove.slice(-2)){ const o = G[c.tipo][c.nuovo];
+            diary.push({ t: at, srv: 1, x: c.prima ? `ho cambiato idea: ora il mio ${NOMI[c.tipo]} preferito è ${c.nuovo}, non più ${c.prima}. ${perche(o)}` : `credo che il mio ${NOMI[c.tipo]} preferito sia ${c.nuovo}. ${perche(o)}` }); }
+          if (nuove.length){ patch.diary = diary.slice(-40); patch.diaryUnread = (patch.diaryUnread || S.diaryUnread || 0) + Math.min(2, nuove.length); }
+          log(`${tag}: gusti · ${misure.length} cose misurate · ` + TIPI.filter(t => G.preferiti && G.preferiti[t]).map(t => `${NOMI[t]}: ${G.preferiti[t]} (${G[t][G.preferiti[t]].p})`).join(" · ") + (G.parole ? ` · parole sue ${Object.keys(G.parole).length}` : ""));
+        }
+      } catch (e){ log(`${tag}: gusti non misurati: ${e.message}`); }
+    }
     await ad.salvaRete(id, impacchetta(M.save(true), { at, steps: info.steps, H: info.H, L: info.L, params: info.params, by: "srv" }));
     await ad.aggiorna(id, patch);
     const riga = { id, ms: fatto, steps: info.steps - s0, H: info.H, L: info.L, crescita: info.H > h0 || info.L > l0 ? `${h0}×${l0} → ${info.H}×${info.L}` : null,
@@ -183,7 +205,8 @@ if (main){
   const { execFileSync } = await import("child_process");
   const traduciLibero = async xs => { try { const out = execFileSync("python3", [new URL("./traduci.py", import.meta.url).pathname], { input: JSON.stringify(xs), maxBuffer: 64e6, timeout: 240000, stdio: ["pipe", "pipe", "ignore"] }); return JSON.parse(String(out)); } catch (e){ return null; } };
   const libero = (await traduciLibero(["The sea is blue."]))?.[0]; console.log("traduttore libero:", libero ? `pronto («The sea is blue.» → «${libero}»)` : "non disponibile");
-  try { await sognaTutti(adapter, { budgetMs: +(process.env.BUDGET_MS || 9*60e3), fetch: globalThis.fetch, tatoeba, traduciLibero: libero ? traduciLibero : null }); }
+  let sinonimi = null; try { const fs = await import("fs"); sinonimi = JSON.parse(fs.readFileSync(new URL("../dati/parole-it.json", import.meta.url), "utf8")); } catch (e){ console.log("dizionario dei sinonimi non disponibile"); }
+  try { await sognaTutti(adapter, { budgetMs: +(process.env.BUDGET_MS || 9*60e3), fetch: globalThis.fetch, tatoeba, sinonimi, traduciLibero: libero ? traduciLibero : null }); }
   finally { await chiudi(); }
   process.exit(0);
 }

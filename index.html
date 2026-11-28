@@ -121,6 +121,18 @@ h3.sub{font-size:11px;font-weight:400;letter-spacing:.06em;color:var(--mid);text
 .hud{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:12px 0 4px}
 .tile{border:1px solid var(--line);border-radius:16px;padding:12px 14px 12px;display:flex;flex-direction:column;gap:6px;background:#0d0d0e;min-height:92px;animation:tile .6s var(--ease) both}
 .tile.wide{grid-column:1/-1}
+/* HUD: angoli a staffa e un riflesso di scansione che passa piano (come il cervello e il cuore) */
+.tile,.card{position:relative;overflow:hidden}
+.tile::before,.card::before{content:"";position:absolute;inset:6px;pointer-events:none;opacity:.5;
+  background:linear-gradient(var(--ink),var(--ink)) 0 0/8px 1px,linear-gradient(var(--ink),var(--ink)) 0 0/1px 8px,
+  linear-gradient(var(--ink),var(--ink)) 100% 0/8px 1px,linear-gradient(var(--ink),var(--ink)) 100% 0/1px 8px,
+  linear-gradient(var(--ink),var(--ink)) 0 100%/8px 1px,linear-gradient(var(--ink),var(--ink)) 0 100%/1px 8px,
+  linear-gradient(var(--ink),var(--ink)) 100% 100%/8px 1px,linear-gradient(var(--ink),var(--ink)) 100% 100%/1px 8px;background-repeat:no-repeat}
+.tile::after{content:"";position:absolute;left:0;right:0;top:-40%;height:40%;pointer-events:none;background:linear-gradient(180deg,transparent,rgba(255,255,255,.035),transparent);animation:scan 6s linear infinite}
+.hud .tile:nth-child(2)::after{animation-delay:-1.5s}.hud .tile:nth-child(3)::after{animation-delay:-3s}.hud .tile:nth-child(4)::after{animation-delay:-4.5s}
+@keyframes scan{to{top:140%}}
+.seg i.on{box-shadow:0 0 4px rgba(242,242,242,.45)}.seg.red i.on{box-shadow:0 0 5px rgba(229,22,31,.6)}
+@media (prefers-reduced-motion:reduce){.tile::after{animation:none;display:none}}
 .tile small{font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--mid)}
 .tile b{font-family:Doto,monospace;font-weight:900;font-size:30px;line-height:1;letter-spacing:.01em}
 .tile b .dim{color:var(--dim)}

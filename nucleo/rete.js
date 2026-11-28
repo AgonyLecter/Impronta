@@ -102,7 +102,13 @@ export class Rete {
     return i;
   }
   ids(words, add = true){ return words.map(w => add ? this.word(w) : (this.idx.has(w) ? this.idx.get(w) : 2)); }
-  emb(id, drop = false){ const D = this.D, x = new Float32Array(D), E = this.p.E.d, C = this.p.C.d, tr = this.tri[id];
+  /* per CAPIRE (mai per allenare): una parola mai vista non diventa <unk> muto ma si legge dai suoi trigrammi
+     (terrorizzata ≈ terrorizzato), come la rete già fa quando in allenamento nasconde la parola (drop).
+     Le sconosciute hanno id negativi che puntano a this.nuove. */
+  idsLeggi(words){ this.nuove = []; return words.map(w => { if (this.idx.has(w)) return this.idx.get(w); const t = trigrams(w); if (!t.length) return 2; this.nuove.push(t); return -this.nuove.length; }); }
+  triDi(id){ return id < 0 ? this.nuove[-id-1] : this.tri[id]; }
+  emb(id, drop = false){ const D = this.D, x = new Float32Array(D), E = this.p.E.d, C = this.p.C.d, tr = this.triDi(id);
+    if (id < 0) drop = true;
     if (!drop) for (let i=0;i<D;i++) x[i] = E[id*D+i];
     if (tr.length){ const k = 1/tr.length; for (const b of tr) for (let i=0;i<D;i++) x[i] += C[b*D+i]*k; }
     return x; }
@@ -158,7 +164,7 @@ export class Rete {
      strato 0: y0 = h0;  strato l: y_l = y_(l-1) + R_l · h_l  (residuo: un nuovo strato con R = 0 non cambia nulla) */
   fwd(ids, lm = true, drop = 0){
     const H = this.H, seq = [0, ...ids], T = seq.length, xs = [], meta = [];
-    for (let t=0;t<T;t++){ const dw = drop > 0 && t > 0 && this.tri[seq[t]].length > 0 && this.r() < drop; xs.push(this.emb(seq[t], dw)); meta.push({ id: seq[t], dw }); }
+    for (let t=0;t<T;t++){ const dw = drop > 0 && t > 0 && seq[t] >= 0 && this.tri[seq[t]].length > 0 && this.r() < drop; xs.push(this.emb(seq[t], dw)); meta.push({ id: seq[t], dw }); }
     const layers = [this.gru(this.lay(0), this.D, xs)];
     let ys = layers[0].map(s => s.h);
     for (let l=1;l<this.L;l++){
@@ -241,7 +247,7 @@ export class Rete {
   evalLoss(exs){ let loss = 0; for (const ex of exs){ loss += this.grad(ex, true); } for (const q of Object.values(this.p)) q.g.fill(0); return exs.length ? loss/exs.length : null; }
 
   /* ---------- usi ---------- */
-  feel(words){ const f = this.fwd(this.ids(words, false)); const o = {}; AFFETTI.forEach((k,i) => o[k] = +f.a[i].toFixed(3)); return o; }
+  feel(words){ const f = this.fwd(this.idsLeggi(words), false); const o = {}; AFFETTI.forEach((k,i) => o[k] = +f.a[i].toFixed(3)); return o; }
   gen({ seed = [], allow = null, temp = .85, max = 12 } = {}){
     const { D, H } = this, out = [];
     let ids = [], lp = 0, n = 0;
@@ -295,7 +301,7 @@ export class Rete {
     return out;
   }
   attiva(words){
-    const f = this.fwd(this.ids(words, false), false);
+    const f = this.fwd(this.idsLeggi(words), false);
     return { words: ["·", ...words], acts: f.layers.map(st => st.map(s => Array.from(s.h, v => Math.round(v*100)))), a: Array.from(f.a, v => +v.toFixed(3)) };
   }
 

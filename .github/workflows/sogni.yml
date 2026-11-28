@@ -1,7 +1,12 @@
 name: sogni
 on:
   schedule: [{ cron: "23 * * * *" }]
-  workflow_dispatch: {}
+  workflow_dispatch:
+    inputs:
+      prova_fonti:
+        description: "prova dal vivo tutte le fonti (non tocca i compagni)"
+        type: boolean
+        default: false
 permissions: { contents: read }
 concurrency: { group: sogni, cancel-in-progress: false }
 jobs:
@@ -43,7 +48,12 @@ jobs:
         with:
           path: ~/.impronta
           key: impronta-dati-v1-${{ github.run_id }}
-      - run: node tools/sogna.mjs
+      - if: inputs.prova_fonti
+        run: node tools/prova-fonti.mjs
+        env:
+          OPUS_DIR: /home/runner/.impronta/opus
+      - if: ${{ !inputs.prova_fonti }}
+        run: node tools/sogna.mjs
         env:
           FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
           TATOEBA: /home/runner/.impronta/ita.txt

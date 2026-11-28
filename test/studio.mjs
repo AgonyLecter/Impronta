@@ -65,6 +65,10 @@ ok(r.stato.coda.some(c => c.t === "Oceano"), "si segna i collegamenti per le not
 const r2 = await studia({ fetch: fintoFetch, S: { ...S, mem: { ...S.mem, studia: [] } }, stato: r.stato, budgetMs: 20000, pausa: 0 });
 ok(r2.fatte.some(f => f.tipo === "pagina" && f.titolo === "Spiaggia del mare") && !r2.fatte.some(f => f.q === "mare"), "la notte dopo non ristudia le stesse cose e segue un collegamento che tocca i tuoi argomenti");
 ok(r2.letture.some(x => /numero primo/.test(x)) || r2.stato.materie.matematica, "il programma va avanti");
+{ const tipi = new Set(r.gruppi.map(g => g.tipo)); ok(r.gruppi.length >= 3 && tipi.has("temi") && tipi.has("materie") && r.gruppi.every(g => g.frasi.length && g.nome), `ricorda da dove viene ogni frase (per i gusti): ${r.gruppi.map(g => g.tipo + ":" + g.nome).slice(0, 5).join(", ")}`); }
+{ const st2 = { ...r.stato, coda: [...r.stato.coda, { f: "wikipedia", t: "Onde del mare", da: "Mare" }] };
+  const js = scegli({ ...S, mem: { ...S.mem, studia: [], gusti: { preferiti: { temi: "Mare" } } } }, st2);
+  ok(js.some(j => j.tipo === "pagina" && /mi piace «Mare»/.test(j.perche) && st2.coda.some(c => c.t === j.titolo && c.da === "Mare")), "i suoi gusti scelgono cosa leggere: segue un collegamento dell'argomento preferito"); }
 const R = riassunto(r2.stato); ok(R.pagine > 5 && R.frasi > 15, `riassunto: ${R.pagine} pagine, ${R.frasi} frasi, prossima materia ${R.prossima}`);
 
 // --- crescita: sul telefono resta piccola, sul server cresce oltre 192 neuroni e in profondità
@@ -88,6 +92,8 @@ ok(S2.mem.studio && S2.mem.studio.pagine > 0, "lascia il riassunto dello studio 
 const N = spacchetta(db.nets.AAAABBBBCCCCDDDD), M2 = new Maestro(); M2.init({ saved: N, corpus });
 ok(db.nets.AAAABBBBCCCCDDDD.meta.by === "srv" && M2.lessico().length > 10, `il telefono riceve la rete con ${M2.lessico().length} parole studiate (es. ${M2.lessico().slice(0, 5).join(", ")})`);
 ok(JSON.parse(db.studio.AAAABBBBCCCCDDDD.letture).length === fatti[0].letture, "tiene le letture per le notti dopo");
+{ const G = S2.mem.gusti; ok(G && G.preferiti && G.preferiti.temi && Object.values(G.temi).every(o => Number.isFinite(o.p) && Number.isFinite(o.s)), `nascono i suoi gusti: argomento preferito «${G && G.preferiti && G.preferiti.temi}» tra ${G ? Object.keys(G.temi).length : 0}`);
+  ok(Object.keys(G.temi).every(k => !/[.#$/\[\]]/.test(k)), "nomi adatti a Firebase (niente . # $ / [ ])"); }
 // --- pulizia: link di Google, richieste vaghe, spazzatura, Wikisource senza estratto
 { const { spazzatura, lettore, VAGHE } = await import("../nucleo/studio.js");
   ok(spazzatura("Prima di continuare su Google utilizziamo cookie e dati.") && !spazzatura("Il mare è una grande distesa di acqua salata."), "riconosce il testo di servizio delle pagine web");

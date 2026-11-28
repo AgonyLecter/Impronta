@@ -15,7 +15,10 @@ const S={v:2,id:ID,born:now-9*DAY,forcePhase:3,name:'Pixel',userName:'luca',firs
   mem:{corpus:['oggi sono andato al mare con mio fratello','mi piace il calcio e la pizza'],studia:[{k:'argomento',x:'geometria',t:now-DAY,fatto:now-3600e3}],
     scoperte:[{t:now-3600e3,argomento:'Geometria',x:"La geometria è la parte della matematica che studia le figure nello spazio.",fonte:'Wikipedia',url:'https://it.wikipedia.org/wiki/Geometria',perche:"me l'hai chiesto tu",detta:0},
               {t:now-3500e3,argomento:'Mare',x:"Il mare è una grande distesa di acqua salata.",fonte:'Wikipedia',url:'https://it.wikipedia.org/wiki/Mare',perche:'ne parli spesso',detta:0}],
-    studio:{t:now-3600e3,pagine:14,frasi:820,materie:{matematica:'3/24',geometria:'1/18'},prossima:'fisica',libro:'Le avventure di Pinocchio (2/36)',curiosita:['Oceano','Spiaggia']}}};
+    studio:{t:now-3600e3,pagine:14,frasi:820,materie:{matematica:'3/24',geometria:'1/18'},prossima:'fisica',libro:'Le avventure di Pinocchio (2/36)',curiosita:['Oceano','Spiaggia']},
+    gusti:{notti:4,temi:{Mare:{s:3.1,prog:.2,sente:[.6,0,0,0,.2,0,0,.3],volte:3,p:.61,c:{curiosita:.8,progresso:.38,cuore:.4}},Geometria:{s:4.9,prog:0,sente:[0,0,0,.1,0,0,.2,0],volte:2,p:.22,c:{curiosita:.2,progresso:0,cuore:-.1}}},
+      libri:{'Le avventure di Pinocchio':{s:3.4,prog:.3,sente:[.3,.4,0,.2,.2,0,0,.4],volte:4,p:.58,c:{curiosita:.7,progresso:.5,cuore:.3}}},materie:{},autori:{},
+      preferiti:{temi:'Mare',libri:'Le avventure di Pinocchio'},parole:{contento:{w:'contento',tra:['contento','felice','lieto']}},storia:[{t:now-DAY,tipo:'temi',nuovo:'Mare',prima:'Geometria'}]}}};
 await c.addInitScript(([id,s])=>{ if(!localStorage.getItem('impronta_state')){ localStorage.setItem('impronta_id',id); localStorage.setItem('impronta_state',s); } },[ID,JSON.stringify(S)]);
 await p.goto('http://impronta.local/');
 const idle=async()=>{for(let i=0;i<150;i++){ await p.waitForTimeout(300); if(await p.evaluate(()=>window.__impronta&&window.__impronta.idle&&!document.querySelector('#sheet.on'))){ await p.waitForTimeout(500); if(await p.evaluate(()=>window.__impronta.idle)) return; } } };
@@ -38,10 +41,15 @@ await p.click('#bStudy'); await p.waitForTimeout(700);
 const sheet=await p.textContent('#pane'); ok(/pagine lette/.test(sheet)&&/Pinocchio/.test(sheet)&&/fotosintesi/.test(sheet)&&/geometria è la parte/.test(sheet),'la scheda studio mostra tutto');
 await p.screenshot({path:path.join(require('os').tmpdir(),'studio.png')});
 await p.evaluate(()=>document.querySelector('#sheet').classList.remove('on'));
-await p.click('#bMind'); await p.waitForTimeout(700); ok(/strati/.test(await p.textContent('#pane'))&&!!(await p.$('#brain')),'la mente mostra il cervello e gli strati');
+await p.click('#bMind'); await p.waitForTimeout(4500); await p.screenshot({path:path.join(require('os').tmpdir(),'mente.png')}); ok(/strati/.test(await p.textContent('#pane'))&&!!(await p.$('#brain')),'la mente mostra il cervello e gli strati');
+await p.click('#mGusti'); await p.waitForTimeout(3500); ok(!!(await p.$('#heart')),'la scheda gusti ha il cuore'); { const g=await p.textContent('#pane'); ok(/i suoi gusti/.test(g)&&/Pinocchio/.test(g)&&/preferito: Mare/.test(g)&&/Geometria → Mare/.test(g)&&/contento/.test(g),'la scheda gusti mostra classifiche, perché, cambi di idea e parole sue'); }
+await p.screenshot({path:path.join(require('os').tmpdir(),'gusti.png')});
 await p.evaluate(()=>document.querySelector('#sheet').classList.remove('on')); await p.click('#bWords'); await p.waitForTimeout(1500); ok(!!(await p.$('#galaxy'))&&/dai libri/i.test(await p.textContent('#pane')),'la scheda parole mostra la galassia');
 await p.evaluate(()=>document.querySelector('#sheet').classList.remove('on')); await p.click('#bDiary'); await p.waitForTimeout(500); ok(/diario/.test(await p.textContent('#pane')),'il diario si apre');
 await p.evaluate(()=>document.querySelector('#sheet').classList.remove('on'));
+r=await say('qual è il tuo libro preferito?'); ok(/^le avventure di pinocchio\./i.test(r) && /\d/.test(r), 'qual è il tuo libro preferito? → «'+r+'»');
+r=await say('perché?'); ok(/^perché /i.test(r), 'perché? → «'+r+'»');
+r=await say('chi preferisci tra mare e geometria?'); ok(/^mare\./i.test(r), 'chi preferisci tra mare e geometria? → «'+r+'» · '+(await cap()));
 r=await say('oggi ho giocato a calcio con mio fratello'); ok(r.length>0,'parla ancora normalmente: «'+r+'»');
 ok(!errs.length,'nessun errore '+errs.slice(0,5).join(' | '));
 await b.close();})();
