@@ -23,7 +23,7 @@ Web app statica (GitHub Pages da `main`), tutta in italiano, nessuna API di IA a
 | `index.html` | markup + tutto il CSS (token in `:root`), schermata di accensione `#boot` |
 | `app.js` | app: stato, Firebase, volto a punti (canvas), voce, flussi (nascita, fasi, sonno, risveglio, accoglienza), input, schede (parole, diario, mente, come ti vede, menu, laboratorio) |
 | `brain.js` | cervello a regole: analisi dell'italiano, memoria, insegnamenti (nome, fatti, gusti), domande, riflessione io↔tu, curiosità ("cos'è X?"), rinforzo (impara quando usare "bravissimo"), ironia (stima, domande, vocabolario personale). `reply()` genera candidati e li valuta |
-| `hud.js` | grafica custom (canvas, nessuna dipendenza): `cervello()` rete 3D vera che rivive l'ultima frase, `galassia()` parole nello spazio dei significati, `puntini()`, `tile()`, `segmenti()`, `titolo()` |
+| `hud.js` | grafica custom (canvas, nessuna dipendenza): `cervello()` ologramma (sagoma di cervello a micro-punti, la rete vera dentro, sinapsi ad arco, piano di scansione, anello delle 8 emozioni, etichette sui neuroni) che rivive l'ultima frase, `cuore()` cuore di particelle che si forma man mano (notti di gusti + cose amate), batte col suo umore, con le cose amate in orbita, `galassia()` parole nello spazio dei significati, `puntini()`, `tile()`, `segmenti()`, `titolo()` |
 | `mondo.js` | il mondo fuori dal telefono: `intento()` riconosce meteo/luoghi/fatti/sinonimi/inglese/notizie/citazioni/«segui»; Open-Meteo, Nominatim, Wikidata, WordNet |
 | `dati/` | `parole-it.json` (sinonimi, "è un tipo di") e `en-it.json` dal WordNet (CC BY 3.0), rifatti con `tools/prepara-wordnet.mjs` |
 | `senso.js` | ritmo di scrittura, lettura dal vivo mentre scrivi, profezia in glifi |
@@ -56,6 +56,8 @@ Web app statica (GitHub Pages da `main`), tutta in italiano, nessuna API di IA a
 
 ## Come testare
 - Logica pura (Node): `node test/insegnamenti.mjs`, `node test/gradienti.mjs` e `node test/sogni-server.mjs`, `node test/crescita.mjs`, `node test/studio.mjs` (tutte le righe devono dire `ok`), `node test/maestro.mjs` (crescita + emozioni su frasi nuove, ~30 s), `node test/emozioni.mjs` (comprensione emotiva su due banchi di frasi mai viste, ~20 s), `node test/gusti.mjs` (gusti deterministici, legati al carattere, stabili).
+- Fonti dal vivo: workflow `sogni` lanciato a mano con `prova_fonti` = true (`tools/prova-fonti.mjs`, non tocca i compagni).
+- Grafica: per fotografare `cervello()`/`cuore()` fuori dall'app basta una pagina che importa `hud.js` (servita con `page.route`); `browser-studio.cjs` salva `mente.png` e `gusti.png` nella cartella temporanea.
 - Fonti e traduzione: `node test/fonti.mjs`, `node test/traduttore.mjs` (gradienti dell'encoder-decoder, impara, notte sul server).
 - Browser: `node test/browser.cjs`, `node test/browser-studio.cjs`, `node test/browser-nascita.cjs` e `node test/browser-mondo.cjs` (servizi esterni simulati con `route`; quest'ultimo usa `https://impronta.local` perché la posizione vuole una pagina sicura) usa Playwright (già installato nell'ambiente cloud) e serve i file con `page.route` su `http://impronta.local/` — **non avviare server locali** (in questo ambiente il comando viene bloccato). `window.__impronta.idle` dice quando l'app ha finito di rispondere.
 - Firebase, gstatic e Wikipedia sono bloccati dal proxy nell'ambiente cloud: sincronizzazione e studio vero non sono testabili lì (lo studio sì, con fonti finte).

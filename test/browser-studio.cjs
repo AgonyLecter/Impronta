@@ -41,8 +41,8 @@ await p.click('#bStudy'); await p.waitForTimeout(700);
 const sheet=await p.textContent('#pane'); ok(/pagine lette/.test(sheet)&&/Pinocchio/.test(sheet)&&/fotosintesi/.test(sheet)&&/geometria è la parte/.test(sheet),'la scheda studio mostra tutto');
 await p.screenshot({path:path.join(require('os').tmpdir(),'studio.png')});
 await p.evaluate(()=>document.querySelector('#sheet').classList.remove('on'));
-await p.click('#bMind'); await p.waitForTimeout(700); ok(/strati/.test(await p.textContent('#pane'))&&!!(await p.$('#brain')),'la mente mostra il cervello e gli strati');
-await p.click('#mGusti'); await p.waitForTimeout(600); { const g=await p.textContent('#pane'); ok(/i suoi gusti/.test(g)&&/Pinocchio/.test(g)&&/preferito: Mare/.test(g)&&/Geometria → Mare/.test(g)&&/contento/.test(g),'la scheda gusti mostra classifiche, perché, cambi di idea e parole sue'); }
+await p.click('#bMind'); await p.waitForTimeout(4500); await p.screenshot({path:path.join(require('os').tmpdir(),'mente.png')}); ok(/strati/.test(await p.textContent('#pane'))&&!!(await p.$('#brain')),'la mente mostra il cervello e gli strati');
+await p.click('#mGusti'); await p.waitForTimeout(3500); ok(!!(await p.$('#heart')),'la scheda gusti ha il cuore'); { const g=await p.textContent('#pane'); ok(/i suoi gusti/.test(g)&&/Pinocchio/.test(g)&&/preferito: Mare/.test(g)&&/Geometria → Mare/.test(g)&&/contento/.test(g),'la scheda gusti mostra classifiche, perché, cambi di idea e parole sue'); }
 await p.screenshot({path:path.join(require('os').tmpdir(),'gusti.png')});
 await p.evaluate(()=>document.querySelector('#sheet').classList.remove('on')); await p.click('#bWords'); await p.waitForTimeout(1500); ok(!!(await p.$('#galaxy'))&&/dai libri/i.test(await p.textContent('#pane')),'la scheda parole mostra la galassia');
 await p.evaluate(()=>document.querySelector('#sheet').classList.remove('on')); await p.click('#bDiary'); await p.waitForTimeout(500); ok(/diario/.test(await p.textContent('#pane')),'il diario si apre');

@@ -3,7 +3,7 @@ import * as B from "./brain.js";
 import { Ritmo, liveRead, prophecy, prophecyHit } from "./senso.js";
 import { Nucleo, AFFETTI, etichetta, conferma, registra, analizza } from "./nucleo/index.js";
 import { impacchetta, spacchetta } from "./nucleo/pacco.js";
-import { cervello, galassia, puntini, tile, segmenti, titolo } from "./hud.js";
+import { cervello, cuore, galassia, puntini, tile, segmenti, titolo } from "./hud.js";
 import { lettore, frasi as frasiDa, definizione } from "./nucleo/studio.js";
 import * as Mondo from "./mondo.js";
 import * as Gusti from "./nucleo/gusti.js";
@@ -1147,18 +1147,28 @@ async function showMind(){
 function showGusti(){
   const G = S.mem.gusti, NOMI = { temi: "argomenti", materie: "materie", autori: "autori", libri: "libri" };
   const W = Gusti.gradite(S.traits), prova = AFFETTI.map((k, i) => [k, W[i]]).sort((x, y) => y[1] - x[1]);
+  // il cuore: le cose amate, cosa gli piace provare, cosa sente leggendo (o parlando con te); si forma man mano
+  const viz = `<div class="viz"><canvas id="heart"></canvas></div>`;
+  const tutte = G ? Gusti.TIPI.flatMap(t => Gusti.classifica(G, t).map(o => ({ ...o, tipo: ({ temi: "argomento", materie: "materia", autori: "autore", libri: "libro" })[t] }))).sort((x, y) => y.p - x.p) : [];
+  const disegna = () => { const c = $("#heart"); if (!c) return;
+    const pesi = tutte.reduce((s, o) => s + Math.max(.05, o.p), 0), sente = tutte.length ? AFFETTI.map((_, k) => tutte.reduce((s, o) => s + (+(o.sente || [])[k] || 0)*Math.max(.05, o.p), 0)/pesi) : null;
+    const M = S.mem.mood.slice(-40), media = f => M.length ? M.reduce((s, r) => s + (f(r) || 0), 0)/M.length : 0;
+    const umore = [media(r => Math.max(0, r.v)), media(r => r.tr), media(r => r.ra), media(r => r.pa), media(r => r.af), media(r => r.i), 0, 0];
+    const notti = G ? G.notti || 0 : 0, formato = clamp(.08 + .92*(1 - Math.exp(-(notti + tutte.length*.5)/14)), 0, 1);
+    vizStop.push(cuore(c, { gusti: tutte.slice(0, 9).map((o, i) => ({ nome: o.nome, tipo: o.tipo, p: o.p, fav: i === 0 })), gradite: W, sentite: sente ? sente.map((v, k) => .6*v + .4*umore[k]) : umore, formato, notti })); };
   const lead = `<p class="muted lead">nessuno gliel'ha detto: i gusti gli vengono di notte, da quello che legge. misura con la sua rete quanto un testo lo sorprende, quanto ne impara e come lo fa sentire, e lo pesa con il suo carattere. cambia idea piano, e non sempre è d'accordo con te.</p>`;
   const carattere = `${titolo("cosa gli piace provare", "dal suo carattere")}<div class="chips">${prova.slice(0, 3).map(([k]) => `<span class="hot">${esc(k)}</span>`).join("")}${prova.slice(-2).map(([k]) => `<span>${esc(k)}<small>poco</small></span>`).join("")}</div>`;
-  if (!G || !Gusti.TIPI.some(t => Object.keys(G[t] || {}).length)){ openSheet("i suoi gusti", lead + carattere + `<p class="muted" style="margin-top:14px">ancora nessuno: nasceranno dalle prossime notti di studio.</p>`); return; }
+  if (!G || !Gusti.TIPI.some(t => Object.keys(G[t] || {}).length)){ openSheet("i suoi gusti", viz + lead + carattere + `<p class="muted" style="margin-top:14px">ancora nessuno: nasceranno dalle prossime notti di studio. il cuore si formerà con loro.</p>`); disegna(); return; }
   const blocchi = Gusti.TIPI.filter(t => Object.keys(G[t] || {}).length).map(t => { const pref = (G.preferiti || {})[t], L = Gusti.classifica(G, t).slice(0, 6);
     return `${titolo(NOMI[t], pref ? "preferito: " + esc(pref) : "")}${L.map(o => `<div class="prog"><span class="ell">${esc(o.nome)}</span>${segmenti(clamp(o.p + .2, 0, 1), 14, o.nome === pref)}<small>${o.p.toFixed(2)}</small></div><p class="muted" style="font-size:11px;margin:-4px 0 10px">${esc(Gusti.perche(o))}</p>`).join("")}`; }).join("");
   const cambi = (G.storia || []).filter(c => c.prima).slice(-4).reverse();
   const parole = Object.entries(G.parole || {}).slice(0, 12);
-  openSheet("i suoi gusti", lead + `<div class="hud">${tile("notti di gusti", G.notti || 0, { sub: "ogni notte li ripesa" })}${tile("ha cambiato idea", cambi.length, { sub: cambi[0] ? `l'ultima: ${esc(cambi[0].nuovo)}` : "non ancora", rosso: true })}</div>`
+  openSheet("i suoi gusti", viz + lead + `<div class="hud">${tile("notti di gusti", G.notti || 0, { sub: "ogni notte li ripesa" })}${tile("ha cambiato idea", cambi.length, { sub: cambi[0] ? `l'ultima: ${esc(cambi[0].nuovo)}` : "non ancora", rosso: true })}</div>`
     + blocchi + carattere
     + (cambi.length ? `${titolo("ha cambiato idea")}${cambi.map(c => `<div class="row"><span>${esc(c.prima)} → <b>${esc(c.nuovo)}</b></span><span>${dstr(c.t)}</span></div>`).join("")}` : "")
     + (parole.length ? `${titolo("le sue parole", "tra i sinonimi")}<div class="chips">${parole.map(([, v]) => `<span class="hot">${esc(v.w)}<small>${esc(v.tra.filter(w => w !== v.w).slice(0, 2).join(", "))}</small></span>`).join("")}</div>` : "")
     + `<p class="muted" style="margin-top:12px">chiedigli «qual è il tuo libro preferito?», «chi preferisci tra … e …?», poi «perché?»</p>`);
+  disegna();
 }
 function showCarattere(){
   const C = analizza(S);

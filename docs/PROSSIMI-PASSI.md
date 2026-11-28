@@ -35,12 +35,11 @@ Configurata dall'utente il 28/11: Test run → 204, giro n. 9 partito (04:36 UTC
 Il token lo crea e lo tiene l'utente: non chiederlo in chat. Verifica che continui: `actions_list` list_workflow_runs su
 `sogni.yml` → giri `workflow_dispatch` ogni ora verso il minuto 53 senza che nessuno li lanci.
 
-### 3. Da verificare al primo giro con il compagno addormentato
-Mai visti dal vivo (bloccati nell'ambiente cloud, provati solo con dati simulati):
-feed RSS (Il Post, ANSA), Gutendex/Gutenberg, Wikidata sul server, Wikiquote, Wikipedia inglese,
-allenamento notturno del suo traduttore (riga `traduttore suo · … parole giuste …` nel registro).
-Per farlo dormire: laboratorio (tocca 5 volte «impronta.») → «dormi», chiudere l'app, aspettare
-3-4 minuti (il server salta chi ha salvato da meno di 3 minuti), poi lanciare il workflow.
+### 3. Fonti dal vivo — prova pronta
+Nei giri veri lo studio spende il tempo prima sulle richieste dell'utente, quindi notizie/Gutenberg possono non arrivare.
+Per vederle subito: `actions_run_trigger` run_workflow su `sogni.yml` con `inputs: {"prova_fonti": true}`
+→ `tools/prova-fonti.mjs` prova Il Post, ANSA, Wikipedia, Wikidata, Wikiquote, Wikizionario, Wikibooks, Wikisource,
+Gutendex e Wikipedia inglese + traduzione (righe `ok`/`NO`, ultima riga `fonti: N ok · M no`).
 
 ### 4. Idee già discusse, non fatte
 - Un modulo di calcolo scritto a mano (la rete non sa fare i conti).
