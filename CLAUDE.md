@@ -14,7 +14,7 @@ Web app statica (GitHub Pages da `main`), tutta in italiano, nessuna API di IA a
   → fatto: `tools/sogna.mjs` + `.github/workflows/sogni.yml` (vedi `docs/PIANO-SOGNI-GITHUB.md`, serve il secret).
 - NUOVA DIREZIONE: esperimento di rete neurale vera che studia da sola (Wikipedia, Wikizionario, libri liberi, link) e racconta cosa scopre; niente quiz, niente "mistero" → `docs/PIANO-STUDIO.md` (primo pezzo fatto).
 - Fonti di conoscenza (tutte gratis, senza chiavi): Wikipedia/Wikizionario/Wikibooks/Wikiversità/Wikisource/Wikiquote, Wikidata (fatti certi), WordNet italiano (dati/), Tatoeba, Gutenberg, notizie RSS + feed dell'utente, Open-Meteo, OpenStreetMap.
-- **Capisce l'inglese ma parla solo italiano**: sul server traduce con il traduttore libero (Argos, `tools/traduci.py`) e in parallelo il SUO traduttore (`nucleo/traduttore.js`) impara da Tatoeba e si misura accanto a quello libero.
+- **Capisce l'inglese ma parla solo italiano**: sul server traduce con il traduttore libero (OPUS-MT, `tools/traduci.py`) e in parallelo il SUO traduttore (`nucleo/traduttore.js`) impara da Tatoeba e si misura accanto a quello libero.
 - Quando una modifica è pronta l'utente di solito chiede di pubblicarla: PR verso `main` e merge.
 
 ## Mappa dei file
@@ -38,7 +38,7 @@ Web app statica (GitHub Pages da `main`), tutta in italiano, nessuna API di IA a
 | `nucleo/worker.js` | la rete gira in un Web Worker (fallback nel thread principale) |
 | `nucleo/index.js` | API `Nucleo`: avvia, osserva, senti, parla, sogna, pilota automatico, salvataggio su IndexedDB |
 | `tools/sogna.mjs` | sogni sul server: ogni ora (GitHub Actions `sogni.yml`) studia, allena la rete (+1500 frasi Tatoeba a notte) e il traduttore; `sognaTutti(adapter, { tatoeba, traduciLibero })` |
-| `tools/traduci.py` | traduttore libero Argos en→it con CTranslate2 (scarica il modello con `--scarica`; il workflow lo tiene in cache con Tatoeba) |
+| `tools/traduci.py` | traduttore libero OPUS-MT en→it (Helsinki-NLP) con CTranslate2 (scarica e converte il modello con `--scarica`; il workflow lo tiene in cache con Tatoeba) |
 | `test/` | test (vedi sotto) |
 
 ## Concetti chiave
