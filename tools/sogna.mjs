@@ -16,6 +16,8 @@ import { studia, riassunto, spazzatura } from "../nucleo/studio.js";
 import { impacchetta, spacchetta } from "../nucleo/pacco.js";
 import { Traduttore, valuta, somiglianza } from "../nucleo/traduttore.js";
 import { misura, aggiorna as aggiornaGusti, scegliParole, perche, TIPI } from "../nucleo/gusti.js";
+import * as Interiore from "../nucleo/interiore.js";
+import * as Ricordi from "../nucleo/ricordi.js";
 import { NEED, STOP, DAY, START } from "../brain.js";
 
 const arr = v => Array.isArray(v) ? v : v ? Object.values(v) : [];
@@ -132,8 +134,14 @@ export async function sognaTutti(ad, { budgetMs = 8*60e3, perMs = 75e3, studioMs
       log(`${tag}: traduttore suo · ${tr ? tr.lotti*8 : 0} coppie · parole giuste ${Math.round(nostro*100)}%${libero != null ? ` (quello libero ${Math.round(libero*100)}%)` : ""}${es ? ` · «${es.en}» → «${es.nostro}»` : ""}`);
     }
     if (ad.salvaStudio && (st || T)) await ad.salvaStudio(id, { stato: JSON.stringify(st || parse(prev.stato, null) || {}), letture: JSON.stringify(letture), ...(T ? { trad: impacchetta(T.save(), { at, passi: T.steps }) } : {}) });
+    // il suo stato interiore: il tempo passato da solo, e lo studio della notte che sazia la curiosità
+    if (p >= 3){ let I = Interiore.scorri(S.interno, at, S.traits || {}, { riposo: 0 }); if (letture.length) I = Interiore.evento(I, "studio", at, Math.min(1, (scoperte.length + 1)/4)); patch.interno = I; }
     let sogno = null;
-    if (p >= 3 && !E.dreamt){
+    // a volte sogna un suo ricordo (e ripensarlo lo rinforza)
+    const forte = p >= 3 && !E.dreamt && Math.random() < .4 ? Ricordi.piuForte(S.ricordi, at, at % 97) : null;
+    if (forte){ const diary = patch.diary || arr(S.diary); diary.push({ t: at, x: Ricordi.racconta(forte, { modo: "sogno" }), srv: 1 });
+      patch.diary = diary.slice(-40); patch.diaryUnread = (patch.diaryUnread || S.diaryUnread || 0) + 1; patch["energy/dreamt"] = 1; patch.ricordi = Ricordi.rievoca(S.ricordi, forte.id, at); sogno = Ricordi.racconta(forte, { modo: "sogno" }); }
+    if (p >= 3 && !E.dreamt && !forte){
       // con poche frasi e tanto allenamento la rete le ripete a memoria: allora sogna "più caldo"
       for (const temp of [.8, 1.1, 1.4]){ sogno = (M.parla({ seeds: [], n: 40, temp })[0] || {}).x || null; if (sogno) break; }
       if (sogno){

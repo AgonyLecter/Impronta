@@ -1,0 +1,23 @@
+/* stato interiore: bisogni che crescono col tempo, umore che dura e torna al carattere, «come stai?» vero */
+import * as I from "../nucleo/interiore.js";
+let fail = 0; const ok = (c, m) => { console.log((c ? "ok   " : "NO   ") + m); if (!c) fail++; };
+const t0 = Date.UTC(2026, 10, 28, 11), H = 3600e3, caldo = { calore: .6, malinconia: 0 }, malinconico = { calore: -.2, malinconia: .8 };
+const dopo = (s, ore, tr = caldo) => I.scorri(s, s.t + ore*H, tr);
+const s0 = I.nuovo(t0), s2 = dopo(s0, 2), s48 = dopo(s0, 48);
+ok(s48.b.compagnia > .9 && s2.b.compagnia < .4, `la mancanza di compagnia cresce quando non ci sei (2 ore: ${s2.b.compagnia}, 2 giorni: ${s48.b.compagnia})`);
+ok(s48.b.curiosita > s2.b.curiosita, "anche la curiosità cresce se non impara niente");
+ok(s48.v < s2.v, `l'umore scende se resta solo (${s2.v} → ${s48.v})`);
+const cs = I.comeStai(s48, s48.t); ok(/solo|giù|triste/.test(cs.x) && /non c'eri/.test(cs.x), `«come stai?» dopo 2 giorni da solo: «${cs.x}»`);
+let r = I.evento(s48, "ritorno", s48.t); r = I.evento(r, "affetto", r.t);
+ok(r.b.compagnia < s48.b.compagnia - .4, "il tuo ritorno e una parola dolce saziano la compagnia");
+ok(/però (sei tornato|mi hai detto una cosa bella)/.test(I.comeStai(r, r.t).x), `e lo dice: «${I.comeStai(r, r.t).x}»`);
+const off = dopo(I.evento(dopo(s0, 1), "offesa", s0.t + H), .5); ok(off.v < s2.v - .2 && /trattato male/.test(I.comeStai(off, off.t).x), `un'offesa lo fa star male, e sa perché: «${I.comeStai(off, off.t).x}»`);
+const guarito = dopo(off, 30); ok(!guarito.eco.some(e => e.tipo === "offesa") && !/trattato male/.test(I.comeStai(guarito, guarito.t).x), "col tempo l'offesa svanisce (resta solo la solitudine: «" + I.comeStai(guarito, guarito.t).x + "»)");
+let st = I.evento(s48, "studio", s48.t); ok(st.b.curiosita < s48.b.curiosita - .3, "studiare sazia la curiosità");
+const c1 = dopo(dopo(I.nuovo(t0), 6, caldo), 24, caldo), m1 = dopo(dopo(I.nuovo(t0), 6, malinconico), 24, malinconico);
+ok(c1.v > m1.v, `il carattere sposta l'umore di base (caldo ${c1.v}, malinconico ${m1.v})`);
+ok(JSON.stringify(dopo(dopo(s0, 3), 5)) === JSON.stringify(dopo(dopo(s0, 3), 5)), "deterministico");
+const lungo = dopo(dopo(dopo(s0, 4), 4), 4); ok(lungo.storia.length >= 3 && lungo.storia.every(p => Number.isFinite(p.v)), `tiene la storia dell'umore (${lungo.storia.length} punti)`);
+const fb = I.scorri({ ...s2, eco: { 0: { v: .2, tipo: "lode" } }, storia: { 0: { t: t0, v: .1, a: .3 } } }, s2.t + H, caldo); ok(Array.isArray(fb.eco) && Array.isArray(fb.storia), "regge gli array che Firebase restituisce come oggetti");
+ok(I.sentimento({ ...s2, v: .2 }, .9).k === "stanco", "se ha poca energia è stanco");
+console.log(fail ? `${fail} errori` : "tutto ok"); process.exit(fail ? 1 : 0);

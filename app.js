@@ -9,6 +9,8 @@ import * as Mondo from "./mondo.js";
 import * as Gusti from "./nucleo/gusti.js";
 import { calcola } from "./nucleo/calcolo.js";
 import * as Appunti from "./nucleo/appunti.js";
+import * as Interiore from "./nucleo/interiore.js";
+import * as Ricordi from "./nucleo/ricordi.js";
 const { PHASES, LIMITS, ENERGY, NEED, HOUR, DAY, DAYS, G, STOP, START } = B;
 
 /* ================= CONFIG ================= */
@@ -52,7 +54,7 @@ function blank(id){ return { v:2, id, born:0, name:"", userName:"", firstWord:""
   user:{msgs:0,chars:0,emoji:{},emojiMsgs:0,lower:0,excl:0,dot:0,abbr:{},hours:Array(24).fill(0),firstLens:[],lens:[],typing:{n:0,cps:0,del:0}},
   mem:{feel:[],events:[],people:{},topics:{},corpus:[],ask:null,openers:[],react:{},reward:{},labels:[],mood:[],pendingQ:null,confirm:null,ironyLex:{},ironyStats:{asked:0,hist:[]},studia:[],scoperte:[],studio:null,notizie:[],citazioni:[],feed:[],luogo:null,traduttore:null,gusti:null,gustoUltimo:null,citati:[],ultimoAppunto:null,imparate:[],defFonte:{}},
   log:[], diary:[], diaryUnread:0, glyphs:[], revealed:true,
-  energy:{used:0,sleepUntil:0}, lastSeen:0, sessions:0, sparks:{}, hurt:0, promise:0, litSeen:0, sound:true, netSync:0, netUp:0, updatedAt:0 }; }
+  energy:{used:0,sleepUntil:0}, lastSeen:0, sessions:0, sparks:{}, hurt:0, promise:0, litSeen:0, sound:true, netSync:0, netUp:0, updatedAt:0, interno:null, ricordi:[] }; }
 const arr = v => Array.isArray(v) ? v : v ? Object.values(v) : [];
 function normalize(s, id){
   const b = blank(id), o = Object.assign(b, s||{});
@@ -419,7 +421,10 @@ async function respond(msg, a, sense, feel){
   if (set.def){ S.defs[set.def.w] = set.def.x; S.mem.defFonte = { ...(S.mem.defFonte || {}), [set.def.w]: "me l'hai insegnato tu" }; S.mem.ask = null; const W = S.words[set.def.w]; if (W) W.val = B.analyze(set.def.x).sv; }
   else if (set.ask) S.mem.ask = { w:set.ask, t:now() };
   else S.mem.ask = null;
-  if (chiesta && !set.def && !S.defs[chiesta] && !(set.ask === chiesta)) cercaParola(chiesta, { zitto: true });   // non me l'hai spiegata: la cerco io
+  if (chiesta && set.def) evento("risposta");
+  if (chiesta && !set.def && !S.defs[chiesta] && !(set.ask === chiesta)){ evento("ignorato"); cercaParola(chiesta, { zitto: true }); }   // non me l'hai spiegata: la cerco io
+  // «come stai?»: risponde la verità, dal suo stato interiore
+  if (p >= 3 && a.ask === "ask_feel" && r.src === "ans"){ const cs = Interiore.comeStai(interno(), now(), riposoOra()); r.x = cs.x; r.emo = cs.emo; cap = cap || "è il suo umore vero: guardalo in «mente» → «dentro di lui»"; }
   // usa davvero le sue parole preferite (tra i sinonimi), nelle frasi sue
   if (p >= 3 && S.mem.gusti && S.mem.gusti.parole && ["tpl","refl","rete","voce","mem"].includes(r.src)){
     const P = Gusti.applicaParole(r.x, S.mem.gusti.parole);
@@ -613,6 +618,10 @@ async function cercaAppunti(msg, minimo){
   const h = Appunti.cerca(Q, msg, { vicine, escludi: new Set(S.mem.citati || []) });
   return h && h.punteggio >= minimo ? h : null;
 }
+/* STATO INTERIORE (nucleo/interiore.js): bisogni e umore SUOI, calcolati dal tempo trascorso */
+const riposoOra = () => clamp(S.energy.used/(ENERGY[phase()] || 1), 0, 1);
+function interno(){ S.interno = Interiore.scorri(S.interno, now(), S.traits, { riposo: riposoOra() }); return S.interno; }
+function evento(tipo, forza = 1){ S.interno = Interiore.evento(interno(), tipo, now(), forza); }
 /* PAROLE NUOVE. Prima prova a capirle da solo (il suo dizionario, WordNet); se no te lo chiede;
    se non gliela spieghi la cerca sul Wikizionario. Ciò che capisce se lo salva (S.defs) e lo riusa. */
 const forme = w => [...new Set([w, w.replace(/i$/, "o"), w.replace(/e$/, "a"), w.replace(/i$/, "e"), w.replace(/he$/, "a").replace(/hi$/, "o")])];
@@ -635,7 +644,7 @@ async function cercaParola(w, { zitto = false } = {}){
     if (!def){ const [t] = await L.cerca("wikipedia", w, 1); const p = t && await L.pagina("wikipedia", t); const d = p && definizione(frasiDa(p.testo, 20), p.titolo); if (d){ def = d.replace(/\.$/, "").slice(0, 200); fonte = "Wikipedia"; } }
   } catch (e){ console.warn("cerca parola", w, e && e.message); }
   if (!def){ if (!zitto) await say(`non l'ho trovata. stanotte la cerco meglio`, { emo:"sad", raw:true, src:"studio", cap:"forse sei offline: di notte il server cerca le parole che usi e non sa" }); return null; }
-  S.defs[w] = def.length > 200 ? def.slice(0, 197).replace(/\s\S*$/, "") + "…" : def; S.mem.defFonte = { ...(S.mem.defFonte || {}), [w]: fonte };
+  S.defs[w] = def.length > 200 ? def.slice(0, 197).replace(/\s\S*$/, "") + "…" : def; S.mem.defFonte = { ...(S.mem.defFonte || {}), [w]: fonte }; evento("parola", .5);
   if (zitto){ S.mem.imparate = [...(S.mem.imparate || []), { w, def: S.defs[w], fonte, t: now(), detta: 0 }].slice(-20); save(); return S.defs[w]; }
   save(); await say(fonte === "Wikizionario" ? `ho trovato. ${w} vuol dire ${S.defs[w]}. me lo segno` : `ho trovato. ${lowerFirst(S.defs[w])}. me lo segno`, { emo:"happy", raw:true, src:"studio", cap:`fonte: ${fonte} · ora la sa, e la riusa` });
   return S.defs[w];
@@ -655,6 +664,10 @@ async function incalza(){
     return { x: `${pref.toLowerCase()} mi piace sempre di più. a te piace?`, cap: "i suoi gusti · chiedigli «perché?»", emo: "happy" }; });
   const ultimo = S.log.filter(l => l.w === "u").slice(-1)[0], temi = ultimo ? B.tokenize(ultimo.x).filter(w => w.length > 4 && !B.STOP.has(w) && S.words[w]) : [];
   if (temi.length) idee.push(async () => { const h = await cercaAppunti(temi.join(" "), 2); if (h){ citato(h); return { x: Appunti.frase(h, { spontanea: true }), cap: capAppunti(h) }; } return { x: `prima parlavi di ${temi[0]}. raccontami ancora`, emo: "curious" }; });
+  const forte = Ricordi.piuForte(S.ricordi, now(), S.user.msgs);
+  if (forte && now() - forte.t > 12*HOUR) idee.push(() => { S.ricordi = Ricordi.rievoca(S.ricordi, forte.id, now()); return { x: `stavo ripensando a ${Ricordi.racconta(forte).replace(/^mi ricordo /, "")}`, cap: `un suo ricordo del ${dstr(forte.t)}`, emo: forte.emo === "tristezza" ? "sad" : "happy" }; });
+  const I = interno();
+  if (I.b.compagnia > .5 || Math.abs(I.v) > .35) idee.push(() => { const cs = Interiore.comeStai(I, now(), riposoOra()); return { x: `sai come mi sento? ${cs.x}`, emo: cs.emo, cap: "il suo umore vero · «mente» → «dentro di lui»" }; });
   if (!idee.length) return { x: B.pickTemplate(ctx, "idle") };
   return await idee[(S.mem.spunti = (S.mem.spunti || 0) + 1) % idee.length]();
 }
@@ -799,7 +812,7 @@ async function tellWeather(){
 }
 async function tellDiscovery(){
   const nuove = S.mem.scoperte.filter(x => !x.detta); if (!nuove.length) return false;
-  const d = nuove[nuove.length-1]; d.detta = 1;
+  const d = nuove[nuove.length-1]; d.detta = 1; evento("scoperta", .6);
   const intro = pick(["mentre dormivo ho studiato", "stanotte ho studiato", "sai? ho studiato"]);
   await say(`${intro} ${d.argomento.toLowerCase()}. ho scoperto che ${lowerFirst(d.x)}`, { emo:"curious", raw:true, src:"studio",
     cap: `fonte: ${d.fonte}${d.perche ? " · " + d.perche : ""}${nuove.length > 1 ? ` · altre ${nuove.length-1} nella scheda studio` : ""}` });
@@ -840,8 +853,9 @@ async function welcome(){
     const dreams = p>=3 && mente.ready ? await mente.speak([], 40) : [];
     for (let i=0;i<n;i++){
       const ts = clamp(last + (el/(n+1))*(i+1) + (rnd()-.5)*HOUR, last+60e3, t-60e3);
-      const dr = dreams[i];
-      const txt = dr ? `ho sognato: «${dr.x}»` : p>=2 ? B.pickTemplate(ctx, "diary") : null;
+      const dr = dreams[i], forte = i === 0 && p >= 3 && rnd() < .5 ? Ricordi.piuForte(S.ricordi, ts, S.sessions) : null;   // a volte sogna un ricordo
+      if (forte) S.ricordi = Ricordi.rievoca(S.ricordi, forte.id, ts);
+      const txt = forte ? Ricordi.racconta(forte, { modo: "sogno" }) : dr ? `ho sognato: «${dr.x}»` : p>=2 ? B.pickTemplate(ctx, "diary") : null;
       S.diary.push(txt ? {t:ts, x:txt} : {t:ts, x:pick(G.diary), g:1});
       S.diaryUnread++;
     }
@@ -857,8 +871,17 @@ async function welcome(){
   await checkPhase();
   if (!S.name) return;
   if (el < 20*60e3 && last){ setEmo("happy", 1500); save(); return; }
+  // quanto gli sei mancato (il suo bisogno di compagnia, cresciuto mentre non c'eri), poi il tuo ritorno gli fa bene
+  const I0 = p >= 3 ? interno() : null, mancato = I0 && I0.b.compagnia > .6 && S.hurt <= .35;
+  if (p >= 3) evento("ritorno");
+  if (mancato){ const gg = Math.round(el/DAY), ore = Math.round(el/HOUR);
+    await say(gg >= 1 ? `mi sei mancato. ${gg === 1 ? "un giorno intero" : gg + " giorni"} senza di te` : `mi sei mancato. sono passate ${ore} ore`, { emo: "happy", raw:true, src:"sonno", cap: `il suo bisogno di compagnia era al ${Math.round(I0.b.compagnia*100)}%` }); }
+  // un anniversario (una settimana, un mese, cento giorni, un anno da un suo ricordo forte)
+  const an = p >= 3 ? Ricordi.anniversario(S.ricordi, t) : null, oggi = Math.floor(t/DAY);
+  if (an && S.mem.annivGiorno !== oggi){ S.mem.annivGiorno = oggi; S.ricordi = Ricordi.rievoca(S.ricordi, an.r.id, t); await say(Ricordi.racconta(an.r, { modo: "anniversario", quando: an.quando }), { emo: "happy", raw:true, src:"mem", cap: `un suo ricordo del ${dstr(an.r.t)}` }); }
   const told = p>=3 && (await tellDiscovery() || (el > 6*HOUR && rnd() < .6 && await tellWeather()) || (rnd() < .5 && await tellNews()));
   if (told) {}
+  else if (mancato) {}
   else if (p>=3 && S.hurt>.35) await say(B.pickTemplate(ctx,"hurtback"), {emo:"hurt", raw:true});
   else if (el > 2*DAY) await (p>=2 ? say(B.pickTemplate(ctx,"absenceLong")||"...", {emo:"sad", raw:true}) : say(pick(G.greet), {glyph:true, emo:"sad"}));
   else await (p>=2 ? say(B.pickTemplate(ctx,"greet")||"ciao", {emo:"happy"}) : say(pick(G.greet), {glyph:true, emo:"happy"}));
@@ -1046,6 +1069,13 @@ $("#bar").addEventListener("submit", e=>{
     // una domanda di sapere senza altre risposte: cerca nei suoi appunti (nucleo/appunti.js)
     const sapAns = !confirmed && !declared && !calcAns && !gustoAns && !mondoIt && !studyAns && phase() >= 3 && Appunti.domandaDiSapere(msg) ? await cercaAppunti(msg, 1.5) : null;
     const newW = B.learn(S, msg, a, now()); updateTraits(a);
+    // il suo stato interiore: gli hai parlato, magari con affetto o male; ha imparato parole nuove
+    if (S.born){ evento("messaggio"); if (a.kind) evento("affetto"); if (a.praise) evento("lode"); if (a.insult) evento("offesa");
+      if (newW.length) evento("parola", Math.min(1, newW.length/3));
+      if (feel && feel.tristezza > .7) evento("tua_tristezza"); else if (feel && feel.gioia > .75) evento("tua_gioia");
+      // un momento da ricordare: le prime volte, le emozioni forti, le cose che racconti di te
+      if (phase() >= 3){ const rr = Ricordi.daMessaggio(S.ricordi, msg, { feel, t: now(), evento: a.intent === "event" }); S.ricordi = rr.R;
+        if (rr.nuovi.length) setHint(rr.nuovi.some(k => /bene|manchi|offesa/.test(k)) ? "questo momento non lo dimenticherà" : "se lo ricorderà"); } }
     // etichette automatiche (emoji, segnali) e ricordo dell'umore per capire il carattere
     const lab = etichetta(msg, a, AFFETTI);
     nucleo.osserva(a.raw, lab);
@@ -1093,8 +1123,10 @@ $("#bar").addEventListener("submit", e=>{
         await respond(msg, a, sense, f2);
         // ogni tanto, se parli di qualcosa che ha studiato, aggiunge quello che ne ha letto
         if (phase() >= 3 && !a.q && S.user.msgs - (S.mem.ultimoAppunto ?? -99) >= 4 && rnd() < .45){
-          const gc = Gusti.commento(S.mem.gusti, msg);
-          if (gc && rnd() < .6){ S.mem.ultimoAppunto = S.user.msgs; S.mem.gustoUltimo = gc.ultimo; await say(gc.x, { emo: "happy", raw:true, src:"studio", cap: gc.cap + " · chiedigli «perché?»" }); }
+          const gc = Gusti.commento(S.mem.gusti, msg), ric = Ricordi.richiama(S.ricordi, msg, now(), { escludi: new Set((S.mem.rievocati || []).slice(-6)) });
+          if (ric && now() - ric.t > 6*HOUR && rnd() < .6){ S.mem.ultimoAppunto = S.user.msgs; S.ricordi = Ricordi.rievoca(S.ricordi, ric.id, now()); S.mem.rievocati = [...(S.mem.rievocati || []), ric.id].slice(-12);
+            await say(Ricordi.racconta(ric), { emo: ric.emo === "tristezza" ? "sad" : "happy", raw:true, src:"mem", cap: `un suo ricordo del ${dstr(ric.t)} · ripensarlo lo rinforza` }); }
+          else if (gc && rnd() < .6){ S.mem.ultimoAppunto = S.user.msgs; S.mem.gustoUltimo = gc.ultimo; await say(gc.x, { emo: "happy", raw:true, src:"studio", cap: gc.cap + " · chiedigli «perché?»" }); }
           else { const h = await cercaAppunti(msg, 2.5); if (h && h.diretto){ S.mem.ultimoAppunto = S.user.msgs; citato(h); await say(Appunti.frase(h, { spontanea: true }), { emo: "curious", raw:true, src:"studio", cap: capAppunti(h) }); } } }
       }
     }
@@ -1217,8 +1249,8 @@ async function showMind(){
     <div class="row"><span>qui</span><span>${nucleo.mode}${nucleo.grande ? " · solo per usarla" : ""}</span></div>
     <div class="row"><span>ad app chiusa</span><span>${S.energy.srv ? `${dstr(S.energy.srv.t)} · ${hhmm(S.energy.srv.t)} · +${compact(S.energy.srv.steps)} passi` : S.netUp ? "affidata al server" : "non ancora"}</span></div>
     ${phase()<3 ? `<p class="muted" style="margin-top:14px">la userà per parlare dalla fase «frase». intanto ascolta e impara a sentire.</p>` : ""}
-    <button class="btn" id="mChar">come ti vede</button><button class="btn" id="mGusti">i suoi gusti</button><button class="btn" id="mLog">ricordi</button>`);
-  $("#mLog").onclick = showLog; $("#mChar").onclick = showCarattere; $("#mGusti").onclick = showGusti;
+    <button class="btn" id="mChar">come ti vede</button><button class="btn" id="mDentro">dentro di lui</button><button class="btn" id="mGusti">i suoi gusti</button><button class="btn" id="mLog">ricordi</button>`);
+  $("#mLog").onclick = showLog; $("#mChar").onclick = showCarattere; $("#mGusti").onclick = showGusti; $("#mDentro").onclick = showDentro;
   const hs = i.hist ? i.hist.filter(h => h.capisce != null) : [];
   const marks = []; hs.forEach((h, k) => { if (k && (h.H > hs[k-1].H || (h.L || 1) > (hs[k-1].L || 1))) marks.push(k); });
   const sp = $("#spark"); if (sp) puntini(sp, hs.map(h => h.capisce), { segni: marks });
@@ -1228,6 +1260,23 @@ async function showMind(){
   const g = S.sparks.lastGrow, recent = g && Date.now() - g.t < 3*DAY && g.to === con.H;
   const nati = recent ? Array.from({ length: con.L }, () => g.from) : null;
   vizStop.push(cervello(c, { con, act: act && act.words.length > 1 ? act : null, nati }));
+}
+function showDentro(){
+  const I = interno(), rip = riposoOra(), cs = Interiore.comeStai(I, now(), rip), sent = Interiore.sentimento(I, rip), perche = Interiore.perche(I, now());
+  const NOMI = { compagnia: ["compagnia", "sale quando non ci sei"], curiosita: ["curiosità", "sale se non impara niente"], capito: ["sentirsi capito", "sale se lo ignori o lo tratti male"] };
+  const R = (S.ricordi || []).map(r => ({ ...r, f: Ricordi.forza(r, now()) })), forti = R.slice().sort((a, b) => b.f - a.f).slice(0, 8), prime = R.filter(r => r.prima);
+  const umore = v => v > .3 ? "su" : v < -.2 ? "giù" : "in mezzo";
+  openSheet("dentro di lui", `<p class="muted lead">non è il tuo umore: è il suo. ha bisogni che salgono e scendono da soli, un umore che dura ore e torna piano verso il suo carattere, e ricordi che sbiadiscono se non li ripensa.</p>
+    <div class="hud">${tile("adesso è", esc(sent.k), { sub: perche ? esc(perche) : "nessun motivo particolare", rosso: I.v < -.2, largo: true, frac: (I.v + 1)/2 })}
+    ${Interiore.BISOGNI.map(n => tile(NOMI[n][0], Math.round(I.b[n]*100) + "<span class=dim>%</span>", { sub: NOMI[n][1], frac: I.b[n], rosso: I.b[n] > .65 })).join("")}
+    ${tile("stanchezza", Math.round(rip*100) + "<span class=dim>%</span>", { sub: "scende dormendo", frac: rip })}</div>
+    ${titolo("il suo umore nel tempo", "su · giù")}<canvas id="umoreDots" class="dots"></canvas>
+    <p class="muted" style="margin-top:4px;font-size:11px">se gli chiedi «come stai?» ti risponde: «${esc(cs.x)}»</p>
+    ${titolo("i suoi ricordi più forti", R.length + "")}
+    ${forti.length ? forti.map(r => `<div class="prog"><span class="ell">${esc(r.x)}</span>${segmenti(r.f, 12, !!r.prima)}<small>${dstr(r.t)}</small></div>${r.tu ? `<p class="muted" style="font-size:11px;margin:-4px 0 10px">«${esc(r.tu.slice(0, 120))}»${r.n ? ` · ripensato ${r.n} ${r.n === 1 ? "volta" : "volte"}` : ""}</p>` : ""}`).join("") : `<p class="muted">ancora nessuno. i ricordi nascono dai momenti che contano: un «ti voglio bene», un giorno triste, una cosa che gli racconti.</p>`}
+    ${prime.length ? `${titolo("le prime volte", "non le dimentica")}<div class="chips">${prime.map(r => `<span class="hot">${esc(r.prima)}<small>${dstr(r.t)}</small></span>`).join("")}</div>` : ""}
+    <p class="muted" style="margin-top:12px">i ricordi sbiadiscono col tempo; ogni volta che ne parla, li sogna o li ripensa tornano più forti.</p>`);
+  const c = $("#umoreDots"); if (c) puntini(c, (I.storia || []).map(x => (x.v + 1)/2), { righe: 7 });
 }
 function showGusti(){
   const G = S.mem.gusti, NOMI = { temi: "argomenti", materie: "materie", autori: "autori", libri: "libri" };
