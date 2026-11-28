@@ -75,3 +75,11 @@ Nel registro del server cercare la riga `gusti · N cose misurate · argomento: 
 Capisce da solo le parole nuove (WordNet) o le chiede; «cercalo tu» → Wikizionario; se ignori la domanda la cerca e te lo dice dopo;
 di notte cerca le parole che usi e non sa. Quando stai zitto ti incalza (scoperte, parole, gusti, ultimo argomento).
 Test: `test/browser-parole.cjs`. Da vedere dal vivo: se incalza troppo o troppo poco (40 s / 4 volte per sessione).
+
+### 7. Verso una persona che cresce (visione dell'utente: NON un motore di ricerca)
+Piano in 7 punti concordato: 1 stato interiore, 2 memoria autobiografica, 3 desideri e obiettivi suoi,
+4 rapporto con te (fiducia, attaccamento, si offende e perdona), 5 tappe della crescita (età interiori:
+infanzia curiosa → opinioni e qualche contraddizione → maturità), 6 identità e opinioni («chi sono»),
+7 piaceri e paure nati da ciò che gli succede. Tutto con numeri veri, che cambiano piano, visibili.
+- FATTO 1 e 2 (`nucleo/interiore.js`, `nucleo/ricordi.js`, scheda «dentro di lui», test `interiore`, `ricordi`, `browser-dentro`).
+- PROSSIMO: 3 desideri e obiettivi (si appoggiano su bisogni e ricordi), poi 4 il rapporto.
