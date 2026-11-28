@@ -85,3 +85,19 @@ che dormono, con lo **stesso codice** di `nucleo/` (gira già in Node, vedi `tes
    ```
    (l'Admin SDK del workflow ignora le regole; servono al telefono).
 4. GitHub → **Actions → sogni → Run workflow** per la prima prova (i workflow programmati partono solo da `main`).
+5. **Sveglia esterna ogni ora** (il `cron` di GitHub salta quasi tutti i giri: in 4 ore ne è partito uno).
+   - GitHub → foto profilo → **Settings → Developer settings → Personal access tokens → Fine-grained tokens →
+     Generate new token**. Nome `impronta-sveglia`, scadenza la più lunga consentita,
+     **Repository access: Only select repositories → Impronta**, **Permissions → Repository → Actions: Read and write**
+     (nient'altro). Copiare il token (`github_pat_…`): si vede una volta sola. Non scriverlo in chat né nel codice.
+   - [cron-job.org](https://cron-job.org) (gratis) → **Create cronjob**:
+     URL `https://api.github.com/repos/AgonyLecter/Impronta/actions/workflows/sogni.yml/dispatches`,
+     orario **ogni ora al minuto 53** (Custom: minuti `53`, ogni ora/giorno/mese).
+     Scheda **Advanced**: metodo **POST**; intestazioni
+     `Authorization: Bearer github_pat_…`, `Accept: application/vnd.github+json`,
+     `X-GitHub-Api-Version: 2022-11-28`, `User-Agent: impronta-sveglia`; corpo `{"ref":"main"}`.
+   - **Test run**: deve rispondere **204** e su GitHub compare un giro `sogni` con evento `workflow_dispatch`.
+     401 = token sbagliato o scaduto; 403/404 = permesso Actions mancante o repository non selezionato.
+   - Il `cron` di GitHub resta come riserva al minuto 23; se partono entrambi, il secondo trova poco da fare
+     (la coda `concurrency` evita giri sovrapposti).
+   - Alla scadenza del token: generarne uno nuovo e sostituirlo nell'intestazione su cron-job.org.
