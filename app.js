@@ -317,7 +317,7 @@ function render(){
   inp.maxLength = LIMITS[p];
   const off = !S.born || isAsleep();
   $("#bar").classList.toggle("off", off); inp.disabled = off; $("#send").disabled = off;
-  inp.placeholder = !S.born ? "" : isAsleep() ? `dorme · fino alle ${hhmm(S.energy.sleepUntil-devOffset)} · tieni premuto sul volto` : S.awaitName ? "dagli un nome" : "insegnagli qualcosa";
+  inp.placeholder = !S.born ? "" : isAsleep() ? `dorme · fino alle ${hhmm(S.energy.sleepUntil-devOffset)} · tieni premuto sul volto` : S.awaitName ? "come lo chiami?" : S.onboard === "tu" ? "come ti chiami?" : "scrivigli qualcosa";
   updCount();
   const b1=$("#bWords"), b2=$("#bDiary"), b3=$("#bMind"); if(b1) b1.onclick=showWords; if(b2) b2.onclick=showDiary; if(b3) b3.onclick=showMind; const b4=$("#bStudy"); if(b4) b4.onclick=showStudy;
 }
@@ -719,6 +719,14 @@ async function welcome(){
 }
 
 /* ================= NASCITA ================= */
+/* un nome da un messaggio: "agony", "ti chiamo agony", "mi chiamo luca", "sono luca" → "Agony" / "Luca" */
+function nomeDa(msg, a){
+  const low = (a.low || msg.toLowerCase()).replace(/[.!?,;:]+/g, " ").trim();
+  const m = low.match(/(?:mi chiamo|ti chiamo|ti chiamerò|ti chiamerei|chiamami|ti chiami|sono|io sono|il mio nome è|il tuo nome è|nome)\s+([a-zà-ù']{2,16})/);
+  const w = m ? m[1] : (msg.trim().split(/\s+/).find(x => /^[\p{L}']{2,16}$/u.test(x)) || "");
+  if (!w) return null;
+  return w.charAt(0).toUpperCase() + w.slice(1).toLowerCase();
+}
 let holding = false, holdStart = 0, holdRaf = 0, lastBuzz = 0;
 function holdTick(){
   if (!holding) return;
@@ -733,9 +741,12 @@ async function hatch(){
   flash(); buzz([80,40,200]); F.glitch = performance.now()+700; ripple(1, 40);
   [262,330,392,523,659].forEach((f,i)=>tone(f,.5,"triangle",.05,i*.06));
   F.hold = 0; document.body.classList.remove("unborn"); setEmo("surprised"); save(); render(); favicon(); setHint("");
-  await wait(1600);
-  await say(G.first[0], {glyph:true, emo:"curious"});
-  setCap("la prima parola che scrivi sarà la sua prima parola");
+  await wait(1400);
+  S.awaitName = true; save(); render();
+  await say("ciao. sono appena nato", { emo:"curious", raw:true });
+  await wait(500);
+  await say("come mi chiami?", { emo:"curious", raw:true, cap:"dagli un nome. poi ti chiederà il tuo" });
+  setHint("dagli un nome");
   S.litSeen = Math.round(growth()*100); render(); inp.focus();
 }
 const stage = $("#stage");
@@ -807,17 +818,23 @@ $("#bar").addEventListener("submit", e=>{
   if (sessionMsgs === 0 && S.name){ S.mem.openers.push({x:msg, h:new Date(now()).getHours()}); if (S.mem.openers.length>30) S.mem.openers.shift(); }
   sessionMsgs++;
   queue(async ()=>{
-    if (!S.firstWord){
-      const w = a.content[0] || a.toks[0] || msg.split(/\s+/)[0].toLowerCase().slice(0,14);
-      B.learn(S, msg, a, now()); S.firstWord = w; save(); setEmo("surprised");
-      await say(w.length>2 ? `${w[0]}... ${w[0]}${w.slice(1,3)}... ${w}?` : `${w}... ${w}?`, {emo:"curious", raw:true, cap:"la sua prima parola. la ricorderà per sempre."});
-      S.awaitName = true; render(); setHint("ora dagli un nome"); return;
+    // primo incontro: come si chiama lui, come ti chiami tu, e si comincia
+    if (S.awaitName || !S.name){
+      const nm = nomeDa(msg, a) || "Impronta";
+      S.name = nm; S.awaitName = false; S.firstWord = S.firstWord || nm.toLowerCase(); S.onboard = "tu"; save(); render();
+      setEmo("happy"); ripple(.7, 50); tone(660,.1,"triangle",.03); tone(880,.12,"triangle",.03,.1);
+      await say(`${nm}. mi piace`, { emo:"happy", raw:true });
+      await say("e tu come ti chiami?", { emo:"curious", raw:true });
+      setHint("digli come ti chiami"); return;
     }
-    if (S.awaitName){
-      const nm = (a.toks[0] || msg.split(/\s+/)[0]).slice(0,12);
-      S.name = nm.charAt(0).toUpperCase()+nm.slice(1); S.awaitName = false; B.learn(S, msg, a, now()); save(); render();
-      await say(S.name.toLowerCase(), {glyph:true, emo:"happy"});
-      setCap("impara da te e studia da solo. prova: «cosa sai dei vulcani?»");
+    if (S.onboard === "tu"){
+      const un = a.name ? a.name.charAt(0).toUpperCase() + a.name.slice(1) : nomeDa(msg, a);
+      S.onboard = null;
+      if (un){ S.userName = un; B.learn(S, msg, { ...a, name: un.toLowerCase() }, now()); }
+      save(); render(); setHint("");
+      await say(un ? `piacere, ${un}` : "va bene. me lo dirai quando vuoi", { emo:"happy", raw:true });
+      await say("io imparo da te e studio da solo. raccontami qualcosa, o chiedimi una cosa che vuoi sapere", { emo:"curious", raw:true,
+        cap:"prova: «cosa sai dei vulcani?» · «studia la filosofia» · «mi piace il mare»" });
       return;
     }
     if (S.awaitUserName && !a.name && a.toks.length <= 2 && !a.q){ a.name = a.toks[a.toks.length-1]; a.intent = "name"; }
@@ -1091,37 +1108,90 @@ function showLab(){
 }
 
 /* ================= AVVIO (schermata di accensione) ================= */
+/* ================= AVVIO =================
+   1 un punto rosso si accende · 2 un'onda accende la griglia di punti · 3 nasce un piccolo cervello: neuroni,
+   sinapsi che si disegnano, impulsi · 4 i neuroni volano a comporre il suo volto, nella posizione vera del volto,
+   e l'avvio si dissolve sul volto reale. Sotto, la diagnostica con i numeri veri. Un tocco salta. */
 async function boot(){
   const el = $("#boot"), c = $("#bootc"), g = c.getContext("2d"), logo = $("#bootl"), st = $("#boots");
-  let skip = false; el.addEventListener("pointerdown", () => { skip = true; }, { once:true });
-  const d = Math.min(3, devicePixelRatio||1), W = c.getBoundingClientRect().width*d; c.width = c.height = W;
-  const s = W/N, pts = CELLS.map(cl => ({ cl, x: Math.random()*W*3 - W, y: Math.random()*W*3 - W, dl: Math.random()*500 }));
-  const t0 = performance.now(); let done = false;
-  (function frame(t){
-    if (done) return; const k = t - t0; g.clearRect(0,0,W,W);
-    for (const p of pts){ const e = smooth((k - p.dl)/900), tx = (p.cl.x+.5)*s, ty = (p.cl.y+.5)*s;
-      const x = p.x + (tx - p.x)*e, y = p.y + (ty - p.y)*e, ring = p.cl.ring, pulse = k > 1300 ? .5+.5*Math.sin(k/300 - p.cl.d*.6) : 0;
-      g.globalAlpha = (.15 + .85*e) * (ring ? .9 : .18 + .5*pulse*(p.cl.d < 4 ? 1 : .3)); g.fillStyle = "#f2f2f2";
-      g.beginPath(); g.arc(x, y, s*.34, 0, 7); g.fill(); }
-    requestAnimationFrame(frame); })(t0);
+  const fast = matchMedia && matchMedia("(prefers-reduced-motion: reduce)").matches;
+  let skip = false, done = false; el.addEventListener("pointerdown", () => { skip = true; }, { once:true });
+  const d = Math.min(2, devicePixelRatio||1), VW = innerWidth, VH = innerHeight; c.width = VW*d; c.height = VH*d;
+  const ox = VW/2, oy = VH*.45, TAU = Math.PI*2, ease = x => { x = clamp(x,0,1); return x*x*(3-2*x); };
+  // il volto vero: dove sono i suoi punti sullo schermo
+  const fr = cv.getBoundingClientRect(), fs = fr.width/N;
+  const target = CELLS.map(cl => ({ x: fr.left + (cl.x+.5)*fs, y: fr.top + (cl.y+.5)*fs, ring: cl.ring, d: cl.d }));
+  // griglia di sfondo
+  const gs = 18, grid = []; for (let y = gs/2; y < VH; y += gs) for (let x = gs/2; x < VW; x += gs) grid.push({ x, y, r: Math.hypot(x - ox, y - oy) });
+  // il piccolo cervello: neuroni in due emisferi, sinapsi verso i vicini
+  const R = Math.min(VW, VH)*.34, P = [];
+  for (let i=0;i<150;i++){ const t = Math.random()*TAU, rr = Math.sqrt(Math.random()); let x = Math.cos(t)*rr*1.15, y = Math.sin(t)*rr*.78; x += Math.sign(x||1)*.07;
+    P.push({ x: ox + x*R, y: oy + y*R, dl: 900 + Math.random()*900 + rr*300, z: .5 + Math.random()*.5 }); }
+  const E = []; P.forEach((p, i) => { P.map((q, j) => [j, Math.hypot(p.x-q.x, p.y-q.y)]).filter(([j]) => j !== i).sort((a, b) => a[1]-b[1]).slice(0, 2).forEach(([j]) => { if (!E.some(e => e.a === j && e.b === i)) E.push({ a: i, b: j, dl: Math.max(P[i].dl, P[j].dl) + 150 + Math.random()*500 }); }); });
+  const pulses = [];
+  const src = target.map((t, i) => ({ p: P[i % P.length], jx: (Math.random()-.5)*14, jy: (Math.random()-.5)*14, dl: Math.random()*380 }));
+  const T_MORPH = 2650, T_END = 3700, born = S.born;
+  let t0 = performance.now();
+  (function frame(now){
+    if (done) return;
+    if (skip && now - t0 < T_MORPH) t0 = now - T_MORPH;              // un tocco: salta al volto
+    const k = (now - t0)*(fast ? 2 : 1);
+    g.setTransform(d, 0, 0, d, 0, 0); g.clearRect(0, 0, VW, VH);
+    // 1 · il punto rosso
+    if (k < 1400){ const a = k < 900 ? .55 + .45*Math.sin(k/90) : 1 - (k-900)/500; g.globalAlpha = clamp(a, 0, 1); g.fillStyle = "#e5161f"; g.beginPath(); g.arc(ox, oy, 3.2 + (k > 900 ? (k-900)/40 : 0), 0, TAU); g.fill(); }
+    // 2 · l'onda sulla griglia
+    const wave = (k - 350)*.55, fadeG = 1 - ease((k - T_MORPH - 300)/600);
+    if (k > 350) for (const q of grid){ const dd = wave - q.r; if (dd < 0) continue; const peak = Math.exp(-dd*dd/1800);
+      g.globalAlpha = (.07 + .55*peak)*fadeG; g.fillStyle = peak > .6 ? "#e5161f" : "#f2f2f2"; g.beginPath(); g.arc(q.x, q.y, .9 + peak*1.1, 0, TAU); g.fill(); }
+    // 3 · il cervello che si forma
+    const fadeB = 1 - ease((k - T_MORPH)/500);
+    if (k > 800 && fadeB > 0){
+      g.lineWidth = .7; g.strokeStyle = "#f2f2f2";
+      for (const e of E){ const pr = ease((k - e.dl)/420); if (pr <= 0) continue; const A = P[e.a], B = P[e.b];
+        g.globalAlpha = .22*fadeB; g.beginPath(); g.moveTo(A.x, A.y); g.lineTo(A.x + (B.x-A.x)*pr, A.y + (B.y-A.y)*pr); g.stroke();
+        if (pr >= 1 && Math.random() < .012 && pulses.length < 40) pulses.push({ e, t: 0 }); }
+      for (let i = pulses.length-1; i >= 0; i--){ const p = pulses[i]; p.t += .035; if (p.t >= 1){ pulses.splice(i, 1); continue; } const A = P[p.e.a], B = P[p.e.b];
+        g.globalAlpha = Math.sin(p.t*Math.PI)*fadeB; g.fillStyle = "#f2f2f2"; g.beginPath(); g.arc(A.x + (B.x-A.x)*p.t, A.y + (B.y-A.y)*p.t, 1.6, 0, TAU); g.fill(); }
+      for (const p of P){ const a = ease((k - p.dl)/260); if (a <= 0) continue; const pop = 1 + Math.max(0, 1 - (k - p.dl)/260)*1.8;
+        g.globalAlpha = a*p.z*fadeB; g.fillStyle = "#f2f2f2"; g.beginPath(); g.arc(p.x, p.y, 1.7*pop, 0, TAU); g.fill(); }
+    }
+    // 4 · i neuroni diventano il suo volto (la scritta si fa da parte)
+    if (k > T_MORPH - 250 && !el.classList.contains("morph")) el.classList.add("morph");
+    if (k > T_MORPH - 200){
+      for (let i=0;i<target.length;i++){ const T = target[i], s = src[i], m = ease((k - T_MORPH - s.dl)/700);
+        const x = s.p.x + s.jx + (T.x - s.p.x - s.jx)*m, y = s.p.y + s.jy + (T.y - s.p.y - s.jy)*m;
+        const lit = T.ring ? .9 : born ? .16 + .5*Math.max(0, Math.sin(k/280 - T.d*.6))*(T.d < 4 ? 1 : .3) : .12;
+        g.globalAlpha = (.25 + .75*m)*(m < 1 ? 1 : lit) + 0; g.fillStyle = "#f2f2f2"; g.beginPath(); g.arc(x, y, fs*.34*(.55 + .45*m), 0, TAU); g.fill(); }
+    }
+    g.globalAlpha = 1;
+    requestAnimationFrame(frame);
+  })(t0);
   const sleepOr = async ms => { const e = performance.now() + ms; while (performance.now() < e && !skip) await wait(30); };
-  await sleepOr(900);
-  for (const ch of "impronta."){ const sp = document.createElement("span"); sp.textContent = ch; logo.appendChild(sp); if (!skip){ tone(400+Math.random()*500,.03,"triangle",.012); await wait(45); } }
-  const line = async (txt) => { st.innerHTML += txt + "\n"; if (!skip) await wait(170); };
-  await line("nucleo <b>2.0</b> · tutto in locale");
-  if (S.born){
-    await line(`memoria · <b>${known()}</b> parole · ${S.mem.corpus.length} frasi`);
-    const t1 = performance.now(); while (!nucleo.ready && performance.now() - t1 < 1500 && !skip) await wait(50);
-    const i = nucleo.info;
-    await line(i ? `rete · <b>${i.H}</b> neuroni · ${Number(i.params).toLocaleString("it-IT")} parametri` : "rete · in risveglio");
-    await line(`istinto · ${AFFETTI.length} emozioni${i && i.last && i.last.capisce != null ? ` · capisce ${Math.round(i.last.capisce*100)}%` : ""}`);
-    await line(`${S.name ? S.name.toLowerCase() : "· · ·"} si sta svegliando…`);
+  // il nome, lettera per lettera, con un'interferenza rossa
+  await sleepOr(1050);
+  for (const ch of "impronta."){ const sp = document.createElement("span"); sp.textContent = ch; if (ch === "." ) sp.className = "g"; logo.appendChild(sp); if (!skip){ tone(380+Math.random()*520,.03,"triangle",.012); await wait(55); } }
+  // diagnostica con i numeri veri
+  const N_ = v => Number(v || 0).toLocaleString("it-IT");
+  const line = async (txt, ms = 230) => { const r = document.createElement("div"); r.innerHTML = `<i></i>${txt}`; st.appendChild(r); if (!skip) await wait(ms); r.querySelector("i").classList.add("ok"); };
+  await line("nucleo <b>2.0</b> · 0 dipendenze · tutto scritto a mano");
+  if (born){
+    const t1 = performance.now(); while (!nucleo.ready && performance.now() - t1 < 1200 && !skip) await wait(50);
+    const i = nucleo.info, srv = S.energy.srv, stu = S.mem.studio;
+    await line(i ? `rete · <b>${i.H}</b> neuroni · ${i.L || 1} ${(i.L || 1) > 1 ? "strati" : "strato"} · ${N_(i.params)} parametri` : "rete · in risveglio");
+    await line(`memoria · <b>${known()}</b> parole tue${srv && srv.studiate ? ` · ${N_(srv.studiate)} dai libri` : ""} · ${S.mem.corpus.length} frasi`);
+    if (stu) await line(`studio · <b>${N_(stu.pagine)}</b> pagine lette${stu.prossima ? ` · prossima: ${esc(stu.prossima)}` : ""}`);
+    if (srv) await line(`sogni ad app chiusa · ultimo ${dstr(srv.t)} ${hhmm(srv.t)}`);
+    await line(`<b>${esc(S.name ? S.name.toLowerCase() : "· · ·")}</b> si sta svegliando…`, 120);
   } else {
-    await line("nessun ricordo");
-    await line("in attesa di nascere…");
+    await line("nessun ricordo · una rete vuota di <b>16</b> neuroni");
+    await line("pronto a imparare da te e a studiare da solo");
+    await line("in attesa di nascere…", 120);
   }
-  await sleepOr(650);
-  el.classList.add("out"); done = true; setTimeout(() => el.remove(), 800);
+  // aspetta che il volto si sia composto, poi si dissolve sul volto vero
+  while (performance.now() - t0 < T_END && !skip) await wait(30);
+  if (skip) await wait(Math.max(0, T_MORPH + 1100 - (performance.now() - t0)));
+  el.classList.add("fade"); await wait(260);
+  el.classList.add("out"); setTimeout(() => { done = true; el.remove(); }, 600);
 }
 
 (async ()=>{
@@ -1138,7 +1208,7 @@ async function boot(){
   if (!S.born){ document.body.classList.add("unborn"); setHint("tieni premuto"); return; }
   const lastC = S.log.filter(l=>l.w==="c").slice(-1)[0];
   if (lastC){ if (lastC.g){ said.appendChild(glyphEl(lastC.x, {stagger:0})); } else said.textContent = lastC.x; said.style.opacity = .5; setTimeout(()=>said.style.opacity="", 1200); }
-  if (S.awaitName) setHint("dagli un nome");
-  else if (!S.firstWord) setHint("insegnagli qualcosa");
+  if (S.awaitName || !S.name) setHint("dagli un nome");
+  else if (S.onboard === "tu") setHint("digli come ti chiami");
   queue(welcome);
 })();
