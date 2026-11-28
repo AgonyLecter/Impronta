@@ -14,7 +14,7 @@ const S={v:2,id:ID,born:now-9*DAY,forcePhase:3,name:'Pixel',userName:'luca',firs
   energy:{used:0,sleepUntil:0,sleepStart:0,dreamMs:40000,need:30000,srv:{t:now-3600e3,steps:4000,loss:2.1,H:256,L:2,params:900000,studiate:812}},
   mem:{corpus:['oggi sono andato al mare con mio fratello','mi piace il calcio e la pizza'],studia:[{k:'argomento',x:'geometria',t:now-DAY,fatto:now-3600e3}],
     scoperte:[{t:now-3600e3,argomento:'Geometria',x:"La geometria è la parte della matematica che studia le figure nello spazio.",fonte:'Wikipedia',url:'https://it.wikipedia.org/wiki/Geometria',perche:"me l'hai chiesto tu",detta:0},
-              {t:now-3500e3,argomento:'Mare',x:"Il mare è una grande distesa di acqua salata.",fonte:'Wikipedia',url:'https://it.wikipedia.org/wiki/Mare',perche:'ne parli spesso',detta:0}],
+              {t:now-3500e3,argomento:'Mare',x:"Il mare è una grande distesa di acqua salata.",frasi:["Il mare è salato perché i fiumi portano sali minerali dalle rocce."],fonte:'Wikipedia',url:'https://it.wikipedia.org/wiki/Mare',perche:'ne parli spesso',detta:0}],
     studio:{t:now-3600e3,pagine:14,frasi:820,materie:{matematica:'3/24',geometria:'1/18'},prossima:'fisica',libro:'Le avventure di Pinocchio (2/36)',curiosita:['Oceano','Spiaggia']},
     gusti:{notti:4,temi:{Mare:{s:3.1,prog:.2,sente:[.6,0,0,0,.2,0,0,.3],volte:3,p:.61,c:{curiosita:.8,progresso:.38,cuore:.4}},Geometria:{s:4.9,prog:0,sente:[0,0,0,.1,0,0,.2,0],volte:2,p:.22,c:{curiosita:.2,progresso:0,cuore:-.1}}},
       libri:{'Le avventure di Pinocchio':{s:3.4,prog:.3,sente:[.3,.4,0,.2,.2,0,0,.4],volte:4,p:.58,c:{curiosita:.7,progresso:.5,cuore:.3}}},materie:{},autori:{},
@@ -47,6 +47,8 @@ await p.screenshot({path:path.join(require('os').tmpdir(),'gusti.png')});
 await p.evaluate(()=>document.querySelector('#sheet').classList.remove('on')); await p.click('#bWords'); await p.waitForTimeout(1500); ok(!!(await p.$('#galaxy'))&&/dai libri/i.test(await p.textContent('#pane')),'la scheda parole mostra la galassia');
 await p.evaluate(()=>document.querySelector('#sheet').classList.remove('on')); await p.click('#bDiary'); await p.waitForTimeout(500); ok(/diario/.test(await p.textContent('#pane')),'il diario si apre');
 await p.evaluate(()=>document.querySelector('#sheet').classList.remove('on'));
+r=await say('quanto fa tre più quattro per due?'); ok(/^fa 11/.test(r) && /3 \+ 4 × 2 = 11/.test(await cap()), 'quanto fa tre più quattro per due? → «'+r+'» · '+(await cap()));
+r=await say('perché il mare è salato?'); ok(/^ho letto che il mare è salato perché/.test(r) && /appunti/.test(await cap()), 'perché il mare è salato? → «'+r+'» · '+(await cap()));
 r=await say('qual è il tuo libro preferito?'); ok(/^le avventure di pinocchio\./i.test(r) && /\d/.test(r), 'qual è il tuo libro preferito? → «'+r+'»');
 r=await say('perché?'); ok(/^perché /i.test(r), 'perché? → «'+r+'»');
 r=await say('chi preferisci tra mare e geometria?'); ok(/^mare\./i.test(r), 'chi preferisci tra mare e geometria? → «'+r+'» · '+(await cap()));

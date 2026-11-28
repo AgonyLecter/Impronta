@@ -311,7 +311,7 @@ export async function studia({ fetch, S, stato, budgetMs = 45000, maxPagine = 10
     const { fr, tradotto } = fonte === "wikizionario" ? { fr: dizionario(pag.testo, pag.titolo), tradotto: false } : await inItaliano(pag.testo, tante); if (!fr.length) return 0;
     letture.push(...fr);
     if (job.tipo === "materia") gruppo("materie", job.materia, fr); else if (job.tipo === "classico") gruppo("libri", job.libro, fr); else if (job.tipo !== "parola") gruppo("temi", pag.titolo, fr);
-    if (scoperta){ const d = definizione(fr, pag.titolo); if (d){ const sc = { t: ora(), argomento: pag.titolo, x: d.length > 260 ? d.slice(0, 257).replace(/\s\S*$/, "") + "…" : d, fonte: (FONTI[fonte] ? FONTI[fonte].nome : fonte) + (tradotto && fonte !== "inglese" ? " (tradotto dall'inglese)" : tradotto ? " (tradotta)" : ""), url: pag.url, perche: job.perche };
+    if (scoperta){ const d = definizione(fr, pag.titolo); if (d){ const sc = { t: ora(), argomento: pag.titolo, x: d.length > 260 ? d.slice(0, 257).replace(/\s\S*$/, "") + "…" : d, fonte: (FONTI[fonte] ? FONTI[fonte].nome : fonte) + (tradotto && fonte !== "inglese" ? " (tradotto dall'inglese)" : tradotto ? " (tradotta)" : ""), url: pag.url, perche: job.perche, frasi: fr.filter(f => f !== d && f.length < 220).slice(0, 6) };
       scoperte.push(sc); if (fonte === "wikipedia" || fonte === "inglese") await conFatti(pag.titolo, fonte, sc); } }
     // i collegamenti diventano curiosità per le notti dopo (quelli sui tuoi argomenti passano avanti)
     if (fonte === "wikipedia") for (const t of arr(pag.link).slice(0, 40)) if (!st.visti[chiave("wikipedia", t)] && !st.coda.some(c => c.t === t)) st.coda.push({ f: "wikipedia", t, da: pag.titolo });
