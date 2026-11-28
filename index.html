@@ -197,6 +197,14 @@ canvas.dots{display:block;width:100%;margin:4px 0 2px}
 <div id="sheet"><div class="pane" id="pane"></div></div>
 <div id="flash"></div>
 <div id="boot"><canvas id="bootc"></canvas><div id="bootl"></div><pre id="boots"></pre></div>
+<script>
+/* file sempre aggiornati: alla prima volta che il service worker prende il controllo, ricarica una volta */
+if ("serviceWorker" in navigator && location.protocol === "https:"){
+  const had = !!navigator.serviceWorker.controller;
+  navigator.serviceWorker.register("sw.js").catch(() => {});
+  navigator.serviceWorker.addEventListener("controllerchange", () => { try { if (!had && !sessionStorage.getItem("impronta_sw")){ sessionStorage.setItem("impronta_sw", "1"); location.reload(); } } catch (e){} });
+}
+</script>
 <script type="module" src="app.js"></script>
 </body>
 </html>
