@@ -51,7 +51,7 @@ ok(jobs[0].perche === "me l'hai chiesto tu" && jobs[1].tipo === "web", "prima st
 ok(jobs.some(j => j.q === "mare" || j.q === "calcio") && jobs.some(j => j.tipo === "parola") && jobs.some(j => j.tipo === "materia") && jobs.some(j => j.tipo === "classico"), "poi i tuoi argomenti, le parole, una materia, un classico");
 
 // --- una notte di studio
-const r = await studia({ fetch: fintoFetch, S, stato: null, budgetMs: 20000, maxPagine: 8 });
+const r = await studia({ fetch: fintoFetch, S, stato: null, budgetMs: 20000, maxPagine: 8, pausa: 0 });
 ok(r.letture.length >= 15, `ha letto ${r.letture.length} frasi`);
 const arg = r.scoperte.map(s => s.argomento);
 ok(arg.includes("Geometria") && r.scoperte.every(s => s.fonte && s.x), "scoperte con la fonte: " + arg.join(", "));
@@ -62,7 +62,7 @@ const MM = r.stato.materie.matematica; ok(MM && MM.fonte === "wikibooks" && MM.c
 ok(!arg.includes("Matematica per le superiori"), "l'indice di un manuale non è una scoperta");
 ok(chiamate.every(u => !/wikipedia|wiktionary|wikibooks|wikisource|wikiversity/.test(u) || /origin=\*/.test(u)), "chiamate API corrette");
 ok(r.stato.coda.some(c => c.t === "Oceano"), "si segna i collegamenti per le notti dopo");
-const r2 = await studia({ fetch: fintoFetch, S: { ...S, mem: { ...S.mem, studia: [] } }, stato: r.stato, budgetMs: 20000 });
+const r2 = await studia({ fetch: fintoFetch, S: { ...S, mem: { ...S.mem, studia: [] } }, stato: r.stato, budgetMs: 20000, pausa: 0 });
 ok(r2.fatte.some(f => f.tipo === "pagina" && f.titolo === "Spiaggia del mare") && !r2.fatte.some(f => f.q === "mare"), "la notte dopo non ristudia le stesse cose e segue un collegamento che tocca i tuoi argomenti");
 ok(r2.letture.some(x => /numero primo/.test(x)) || r2.stato.materie.matematica, "il programma va avanti");
 const R = riassunto(r2.stato); ok(R.pagine > 5 && R.frasi > 15, `riassunto: ${R.pagine} pagine, ${R.frasi} frasi, prossima materia ${R.prossima}`);
@@ -99,3 +99,10 @@ ok(JSON.parse(db.studio.AAAABBBBCCCCDDDD.letture).length === fatti[0].letture, "
     if (q.action === "parse") return { ok: true, json: async () => ({ parse: { text: "<div><p>C'era una volta un pezzo di legno che parlava come un bambino vero.</p><p>Maestro Ciliegia lo trovò nella sua bottega una mattina.</p></div>", links: [] } }) };
     return { ok: true, json: async () => ({ query: { pages: [{ title: "Pinocchio/Capitolo I", extract: "" }] } }) }; });
   const pg = await ws.pagina("wikisource", "Pinocchio/Capitolo I"); ok(pg && frasi(pg.testo).length === 2, "Wikisource: legge il capitolo anche senza estratto"); }
+
+// --- educazione con Wikipedia e argomenti veri
+{ const { lettore } = await import("../nucleo/studio.js");
+  let n = 0; const L = lettore(async () => { n++; return n < 3 ? { ok: false, status: 429, headers: { get: () => null } } : { ok: true, json: async () => ({ query: { search: [{ title: "Vulcano" }] } }) }; }, { pausa: 0, attesa: async () => {} });
+  const t = await L.cerca("wikipedia", "vulcani"); ok(t[0] === "Vulcano" && n === 3, "se Wikipedia dice «troppe richieste» aspetta e riprova");
+  const jobs = scegli({ ...S, words: { studia: { c: 20 }, bravissimo: { c: 15 }, vulcani: { c: 3 } } }, nuovoStato());
+  ok(!jobs.some(j => j.q === "studia" || j.q === "bravissimo") && jobs.some(j => j.q === "vulcani"), "argomenti veri, non «studia» o «bravissimo»"); }
