@@ -51,7 +51,7 @@ espliciti che la rete impara a usare e a raccontare.
 | WordNet italiano (MultiWordNet, CC BY 3.0) | telefono (`dati/`) | sinonimi, "è un tipo di", parole inglesi → italiano |
 | Tatoeba (manythings.org, CC BY) | server | 1500 frasi naturali a notte per la rete; coppie en→it per il suo traduttore |
 | Wikiquote | server e telefono | citazioni |
-| RSS (Il Post, ANSA + feed dell'utente) | server | notizie della notte (`mem.notizie`) |
+| RSS (ANSA, Rai News, Internazionale, Focus, Il Fatto Quotidiano + feed dell'utente) | server | notizie della notte (`mem.notizie`) |
 | Progetto Gutenberg (Gutendex) | server | un libro italiano, 30.000 caratteri a notte |
 | Wikipedia in inglese | server (telefono: avvisa) | se in italiano non c'è: tradotta e poi studiata |
 | Open-Meteo, OpenStreetMap | telefono | meteo e luoghi |

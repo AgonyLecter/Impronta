@@ -4,7 +4,7 @@ import { Ritmo, liveRead, prophecy, prophecyHit } from "./senso.js";
 import { Nucleo, AFFETTI, etichetta, conferma, registra, analizza } from "./nucleo/index.js";
 import { impacchetta, spacchetta } from "./nucleo/pacco.js";
 import { cervello, cuore, galassia, puntini, tile, segmenti, titolo } from "./hud.js";
-import { lettore, frasi as frasiDa, definizione } from "./nucleo/studio.js";
+import { lettore, frasi as frasiDa, definizione, FEED } from "./nucleo/studio.js";
 import * as Mondo from "./mondo.js";
 import * as Gusti from "./nucleo/gusti.js";
 const { PHASES, LIMITS, ENERGY, NEED, HOUR, DAY, DAYS, G, STOP, START } = B;
@@ -698,7 +698,7 @@ async function rispondiMondo(it){
       return true;
     }
     if (it.tipo === "notizie"){
-      const N = S.mem.notizie.slice().reverse(); if (!N.length){ await dici("non ho ancora letto notizie. le leggo stanotte mentre dormo", "ogni notte legge i giornali (Il Post, ANSA e i feed che gli dai)"); return true; }
+      const N = S.mem.notizie.slice().reverse(); if (!N.length){ await dici("non ho ancora letto notizie. le leggo stanotte mentre dormo", `ogni notte legge i giornali (${FEED.map(f => f.nome).join(", ")} e i feed che gli dai)`); return true; }
       const n = N.find(x => !x.detta) || N[0]; n.detta = 1; save();
       await dici(`stanotte ho letto che: ${lowerFirst(n.titolo.replace(/\.$/, ""))}`, `fonte: ${n.fonte}${N.filter(x => !x.detta).length ? ` · altre ${N.filter(x => !x.detta).length} nella scheda studio` : ""}`);
       return true;
@@ -751,7 +751,7 @@ function showStudy(){
       ${(st.curiosita || []).length ? `${titolo("curiosità per le prossime notti")}<div class="chips lib">${st.curiosita.map(x => `<span>${esc(x)}</span>`).join("")}</div>` : ""}` : ""}
     ${R.length ? `${titolo("le tue richieste")}<div class="chips">${R.map(q => `<span class="${q.fatto ? "" : "hot"}">${esc(q.k === "link" ? host(q.x) || q.x : q.x)}<small>${q.fatto ? "✓ " + dstr(q.fatto) : "stanotte"}</small></span>`).join("")}</div>` : ""}
     ${S.mem.notizie.length ? `${titolo("notizie della notte", S.mem.notizie.length)}${S.mem.notizie.slice().reverse().slice(0, 8).map(n => `<div class="card"><header><b>${esc(n.fonte)}</b><span>${dstr(n.t)}${n.url ? ` · <a href="${esc(n.url)}" target="_blank" rel="noopener">apri</a>` : ""}</span></header><p>${esc(n.titolo)}</p></div>`).join("")}` : ""}
-    ${titolo("giornali che legge", (S.mem.feed.length + 2) + "")}<div class="chips"><span>Il Post</span><span>ANSA</span>${S.mem.feed.map(f => `<span class="hot">${esc(host(f) || f)}</span>`).join("")}</div><p class="muted" style="margin-top:6px">per aggiungerne uno: «segui» e l'indirizzo del feed RSS</p>
+    ${titolo("giornali che legge", (S.mem.feed.length + FEED.length) + "")}<div class="chips">${FEED.map(f => `<span>${esc(f.nome)}</span>`).join("")}${S.mem.feed.map(f => `<span class="hot">${esc(host(f) || f)}</span>`).join("")}</div><p class="muted" style="margin-top:6px">per aggiungerne uno: «segui» e l'indirizzo del feed RSS</p>
     ${S.mem.citazioni.length ? `${titolo("citazioni", S.mem.citazioni.length)}${S.mem.citazioni.slice().reverse().slice(0, 4).map(c => `<div class="card"><p>«${esc(c.x)}»</p><p class="muted" style="margin-top:6px;font-size:11px">${esc(c.autore || "")} · Wikiquote</p></div>`).join("")}` : ""}
     ${titolo("scoperte", D.length)}${D.length ? D.map(d => `<div class="card"><header><b>${esc(d.argomento)}</b><span>${dstr(d.t)} · ${d.url ? `<a href="${esc(d.url)}" target="_blank" rel="noopener">${esc(d.fonte)}</a>` : esc(d.fonte)}</span></header><p>${esc(d.x)}</p>${d.fatti && d.fatti.length ? `<p class="muted" style="margin-top:6px;font-size:11px">${d.fatti.slice(0, 5).map(f => esc(f.k + ": " + f.v)).join(" · ")} · Wikidata</p>` : ""}${d.perche ? `<p class="muted" style="margin-top:6px;font-size:11px">${esc(d.perche)}</p>` : ""}</div>`).join("") : `<p class="muted">ancora nessuna.</p>`}`);
 }

@@ -1,5 +1,5 @@
 /* nuove fonti (simulate): Wikidata, Wikiquote, RSS, Gutenberg, Wikipedia inglese tradotta */
-import { lettore, studia, inglese, frasiDaFatti, nuovoStato } from "../nucleo/studio.js";
+import { lettore, studia, inglese, frasiDaFatti, nuovoStato, dizionario, testoDaHtml, scegli } from "../nucleo/studio.js";
 const ok = (c, m) => { console.log((c ? "ok   " : "NO   ") + m); if (!c) process.exitCode = 1; };
 const J = o => ({ ok: true, json: async () => o, text: async () => JSON.stringify(o), headers: { get: () => "application/json" } });
 const T = (t, ct = "text/xml") => ({ ok: true, text: async () => t, json: async () => JSON.parse(t), headers: { get: () => ct } });
@@ -45,7 +45,7 @@ ok(inglese("The quokka is a small macropod about the size of a cat and it is fou
 // una notte intera, con un traduttore finto (parola per parola, solo per il test)
 const DIZ = { "the quokka is a small macropod about the size of a domestic cat.": "Il quokka è un piccolo macropode grande come un gatto domestico.", "it is the only member of the genus setonix.": "È l'unico membro del genere Setonix.", "the quokka is found on some smaller islands off the coast of western australia.": "Il quokka si trova su alcune isole al largo dell'Australia occidentale.", "it is known as the happiest animal in the world because of its smile.": "È noto come l'animale più felice del mondo per il suo sorriso." };
 let tradotte = 0; const traduci = async xs => xs.map(x => { tradotte++; return DIZ[x.toLowerCase()] || null; });
-const S = { words: { roma: { c: 5 }, quokka: { c: 3 } }, mem: { studia: [{ k: "argomento", x: "quokka" }], feed: ["https://www.ansa.it/sito/notizie/topnews/topnews_rss.xml"] } };
+const S = { words: { roma: { c: 5 }, quokka: { c: 3 } }, mem: { gutenberg: true, studia: [{ k: "argomento", x: "quokka" }], feed: ["https://www.ansa.it/sito/notizie/topnews/topnews_rss.xml"] } };
 let st = nuovoStato(); st.notti = 0;
 const r = await studia({ fetch: finto, S, stato: st, budgetMs: 20000, pausa: 0, traduci });
 const qk = r.scoperte.find(s => s.argomento === "Quokka");
@@ -58,3 +58,10 @@ const r2 = await studia({ fetch: finto, S: { ...S, mem: { ...S.mem, studia: [] }
 const cc = [...r.citazioni, ...r2.citazioni]; ok(cc.length >= 1 && /mare/i.test(cc[0].x), "ogni tanto una citazione da Wikiquote: «" + (cc[0] || {}).x + "»");
 const r3 = await studia({ fetch: finto, S, stato: nuovoStato(), budgetMs: 20000, pausa: 0 });
 ok(!r3.scoperte.some(s => s.argomento === "Quokka") && !r3.letture.some(x => inglese(x)), "senza traduttore l'inglese non entra");
+
+// Wikizionario: dalle righe di definizione a frasi vere (formato preso da una pagina vera)
+{ const pg = "\nItaliano\n\n\nSostantivo\nmalinconia ( approfondimento) f sing (pl.: malinconie)\n\n(psicologia) (medicina) stato di costante malumore\n(per estensione) momento vissuto con profonda compassione per sé e per altri\n\n\nSillabazione\nma | lin | co | nì | a\n\n\nPronuncia\nAFI: /maliŋkoˈnia/\n\n\nEtimologia / Derivazione\ndal latino tardo melancholia; significa bile nera\n\n\nSinonimi\nabbattimento, avvilimento, mestizia, tristezza,\n";
+  const fr = dizionario(pg, "malinconia");
+  ok(fr[0] === "malinconia significa stato di costante malumore." && fr.some(f => f === "malinconia viene dal latino tardo melancholia.") && fr.some(f => /è come abbattimento, avvilimento, mestizia e tristezza\./.test(f)) && !fr.some(f => /\|/.test(f)), "Wikizionario: definizioni, etimologia e sinonimi diventano frasi: «" + fr[0] + "»"); }
+ok(testoDaHtml("Il paese pi&amp;#xF9; felice") === "Il paese più felice", "titoli con entità esadecimali (&#xF9; → ù)");
+ok(!scegli({ words: {}, mem: {} }, nuovoStato()).some(j => j.tipo === "gutenberg") && scegli({ words: {}, mem: { gutenberg: true } }, nuovoStato()).some(j => j.tipo === "gutenberg"), "Gutenberg spento (rifiuta i server cloud), riaccendibile con mem.gutenberg");

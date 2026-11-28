@@ -35,11 +35,13 @@ Configurata dall'utente il 28/11: Test run → 204, giro n. 9 partito (04:36 UTC
 Il token lo crea e lo tiene l'utente: non chiederlo in chat. Verifica che continui: `actions_list` list_workflow_runs su
 `sogni.yml` → giri `workflow_dispatch` ogni ora verso il minuto 53 senza che nessuno li lanci.
 
-### 3. Fonti dal vivo — prova pronta
-Nei giri veri lo studio spende il tempo prima sulle richieste dell'utente, quindi notizie/Gutenberg possono non arrivare.
-Per vederle subito: `actions_run_trigger` run_workflow su `sogni.yml` con `inputs: {"prova_fonti": true}`
-→ `tools/prova-fonti.mjs` prova Il Post, ANSA, Wikipedia, Wikidata, Wikiquote, Wikizionario, Wikibooks, Wikisource,
-Gutendex e Wikipedia inglese + traduzione (righe `ok`/`NO`, ultima riga `fonti: N ok · M no`).
+### 3. Fonti dal vivo — VERIFICATE (28/11, `prova_fonti`)
+Funzionano: ANSA, Rai News, Internazionale, Focus, Il Fatto Quotidiano (questi in `FEED`; ok anche AGI, Wired, Repubblica,
+Corriere, Il Sole 24 Ore), Wikipedia, Wikidata, Wikiquote, Wikizionario (ora letto con `dizionario()`), Wikibooks
+(a volte un 429 di Wikimedia: si aspetta quanto chiede), Wikisource, Wikipedia inglese + traduzione OPUS-MT.
+Rifiutano i programmi automatici, e li rispettiamo: Il Post (403), Gutenberg sia Gutendex (403) sia il sito (503).
+Gutenberg è spento (si riaccende con `S.mem.gutenberg = true`); i libri arrivano da Wikisource (`CLASSICI`, 29 titoli).
+Riprova quando vuoi: `actions_run_trigger` run_workflow su `sogni.yml` con `inputs: {"prova_fonti": true}`.
 
 ### 4. Idee già discusse, non fatte
 - Un modulo di calcolo scritto a mano (la rete non sa fare i conti).

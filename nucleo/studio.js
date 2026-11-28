@@ -25,11 +25,16 @@ export const FONTI = {
   wikidata:     { host: "www.wikidata.org",   nome: "Wikidata" },
   inglese:      { host: "en.wikipedia.org",   nome: "Wikipedia in inglese" }
 };
-export const FEED = [{ nome: "Il Post", url: "https://www.ilpost.it/feed/" }, { nome: "ANSA", url: "https://www.ansa.it/sito/notizie/topnews/topnews_rss.xml" }];
+/* giornali provati dal vivo (tools/prova-fonti.mjs): accettano i programmi automatici. Il Post rifiuta (403): non lo usiamo */
+export const FEED = [{ nome: "ANSA", url: "https://www.ansa.it/sito/notizie/topnews/topnews_rss.xml" }, { nome: "Rai News", url: "https://www.rainews.it/rss/tutti" },
+  { nome: "Internazionale", url: "https://www.internazionale.it/sitemaps/rss.xml" }, { nome: "Focus", url: "https://www.focus.it/rss" },
+  { nome: "Il Fatto Quotidiano", url: "https://www.ilfattoquotidiano.it/feed/" }];
 export const MATERIE = ["matematica","geometria","algebra","fisica","chimica","biologia","astronomia","storia","geografia",
   "filosofia","letteratura italiana","informatica","latino","musica","storia dell'arte","economia","psicologia","scienze della terra"];
 export const CLASSICI = ["Le avventure di Pinocchio","I promessi sposi","Divina Commedia","Il principe","Operette morali",
-  "Dialogo sopra i due massimi sistemi del mondo","Cuore (De Amicis)","I Malavoglia","Il fu Mattia Pascal","Canti (Leopardi)"];
+  "Dialogo sopra i due massimi sistemi del mondo","Cuore (De Amicis)","I Malavoglia","Il fu Mattia Pascal","Canti (Leopardi)",
+  "Decameron","Orlando furioso","Le mie prigioni","Novelle per un anno","Il Novellino","Le confessioni di un italiano","Mastro-don Gesualdo",
+  "Il piacere","Ultime lettere di Jacopo Ortis","Il Canzoniere","Gerusalemme liberata","Fosca","Senilità","Piccolo mondo antico"];
 
 const UA = "impronta-studio/1.0 (compagno digitale open source, uso personale)";
 const STOP = new Set("il lo la i gli le un uno una di a da in con su per tra fra e ed o ma che chi non è sono sei ho hai ha mi ti si ci vi ne me te lui lei noi voi loro io tu del della dei delle al alla ai nel nella sul sulla questo questa quello quella cosa come dove quando perché anche ancora già poi solo se sì no ok mio mia tuo tua suo sua oggi ora molto poco più tipo".split(" "));
@@ -72,11 +77,36 @@ export function definizione(fr, titolo){
   const t = tok(titolo)[0] || "";
   return fr.find(f => / (è|sono|era|erano|indica|si intende|si chiama|consiste) /.test(f) && (!t || tok(f).slice(0, 8).some(w => w.startsWith(t.slice(0, 5))))) || fr[0] || null;
 }
+/* Wikizionario: la pagina non ha frasi ma definizioni a righe. Diventano frasi vere:
+   «malinconia significa stato di costante malumore.», «malinconia viene dal latino tardo melancholia…», «malinconia è come tristezza, mestizia.» */
+const CATEGORIE = /^(sostantivo|aggettivo|verbo|avverbio|pronome|preposizione|congiunzione|interiezione|articolo|locuzione[a-z ]*|nome proprio)$/i;
+const SEZIONI = /^(sillabazione|pronuncia|etimologia[ /a-z]*|sinonimi|contrari|parole derivate|termini correlati|varianti|alterati|proverbi e modi di dire|traduzione|citazioni|note|iponimi|iperonimi|vedi anche|forma flessa|italiano|inglese|latino|francese|spagnolo|tedesco|.{0,3})$/i;
+export function dizionario(testo, parola){
+  const w = String(parola || "").toLowerCase(), out = [], righe = String(testo || "").split("\n").map(r => r.trim());
+  let sez = null, lemma = false;
+  const pulita = r => r.replace(/^(\([^)]*\)\s*)+/, "").replace(/\s+/g, " ").replace(/[;,:.\s]+$/, "").trim();
+  for (const r of righe){
+    if (!r) continue;
+    if (CATEGORIE.test(r)){ sez = "def"; lemma = true; continue; }
+    if (SEZIONI.test(r)){ sez = r.toLowerCase(); continue; }
+    if (sez === "def"){
+      if (lemma){ lemma = false; if (/\((pl|sing|m|f)\b|\bpl\.:|\b(m|f) sing\b/.test(r) || r.toLowerCase().startsWith(w)) continue; }
+      const d = pulita(r); if (d.split(" ").length >= 3 && d.length < 260 && !/[|=]/.test(d)) out.push(`${w} significa ${d}.`);
+    } else if (sez && sez.startsWith("etimologia")){
+      const d = pulita(r); if (/^(dal|dalla|dallo|dai|dagli|dalle|da) /.test(d) && d.length < 260) out.push(`${w} viene ${d.replace(/;.*$/, "")}.`); sez = "-";
+    } else if (sez === "sinonimi"){
+      const xs = r.split(/,\s*/).map(x => pulita(x)).filter(x => x && x.split(" ").length <= 2 && x !== w).slice(0, 5);
+      if (xs.length >= 2) out.push(`${w} è come ${xs.slice(0, -1).join(", ")} e ${xs[xs.length - 1]}.`); sez = "-";
+    }
+    if (out.length >= 8) break;
+  }
+  return out;
+}
 export function testoDaHtml(html){
   return String(html || "").replace(/<(script|style|noscript|nav|header|footer|aside)[\s\S]*?<\/\1>/gi, " ")
     .replace(/<\/(p|div|li|h\d|br|tr|section|article)>/gi, "\n").replace(/<br\s*\/?>/gi, "\n").replace(/<[^>]+>/g, " ")
     .replace(/&nbsp;/g, " ").replace(/&amp;/g, "&").replace(/&quot;/g, '"').replace(/&#39;|&apos;/g, "'").replace(/&lt;/g, "<").replace(/&gt;/g, ">")
-    .replace(/&#(\d+);/g, (_, n) => String.fromCharCode(+n)).replace(/[ \t]+/g, " ");
+    .replace(/&#(\d+);/g, (_, n) => String.fromCharCode(+n)).replace(/&#x([0-9a-f]+);/gi, (_, n) => String.fromCodePoint(parseInt(n, 16))).replace(/[ \t]+/g, " ");
 }
 
 /* capitoli nell'ordine giusto: "Capitolo II" prima di "Capitolo X", "Lezione 2" prima di "Lezione 10" */
@@ -111,16 +141,17 @@ export function frasiDaFatti(nome, F){
 /* ---------- il lettore (API MediaWiki, uguale per tutte le fonti Wikimedia) ---------- */
 export function lettore(fetch, { timeout = 15000, pausa = 700, attesa = ms => new Promise(r => setTimeout(r, ms)) } = {}){
   // educato con Wikipedia: una richiesta alla volta, con una pausa; se dice "troppe richieste" (429) aspetta e riprova
-  let ultima = 0;
+  let ultima = 0; const conti = { richieste: 0, attese: 0, msAttesa: 0 };
   async function get(url){
     for (let prova = 0; ; prova++){
       const gap = ultima + pausa - Date.now(); if (gap > 0) await attesa(gap); ultima = Date.now();
       const ac = typeof AbortController !== "undefined" ? new AbortController() : null, tm = ac ? setTimeout(() => ac.abort(), timeout) : 0;
       let r; try { r = await fetch(url, { headers: { "User-Agent": UA, "Api-User-Agent": UA }, signal: ac && ac.signal }); } finally { clearTimeout(tm); }
+      conti.richieste++;
       if (r.ok) return r;
       if ((r.status === 429 || r.status === 503) && prova < 3){
-        const ra = r.headers && r.headers.get && +r.headers.get("retry-after");
-        await attesa(Math.min(20000, (ra > 0 ? ra*1000 : 0) || 2500*Math.pow(2, prova))); continue;
+        const ra = r.headers && r.headers.get && +r.headers.get("retry-after"), ms = Math.min(20000, (ra > 0 ? ra*1000 : 0) || 2500*Math.pow(2, prova));
+        conti.attese++; conti.msAttesa += ms; await attesa(ms); continue;
       }
       throw new Error("HTTP " + r.status);
     }
@@ -131,6 +162,7 @@ export function lettore(fetch, { timeout = 15000, pausa = 700, attesa = ms => ne
     return (await get(u.toString())).json();
   }
   return {
+    conti,
     async cerca(fonte, testo, n = 3){
       const j = await api(fonte, { action: "query", list: "search", srsearch: testo, srlimit: n, srnamespace: 0 });
       return arr(j.query && j.query.search).map(s => s.title);
@@ -161,7 +193,7 @@ export function lettore(fetch, { timeout = 15000, pausa = 700, attesa = ms => ne
       const ent = e.entities && e.entities[q]; if (!ent) return null;
       const out = [], serve = new Set();
       for (const [P, nome] of Object.entries(PROPRIETA)){
-        const cl = arr(ent.claims && ent.claims[P]).filter(c => c.rank !== "deprecated").sort((a, b) => (b.rank === "preferred") - (a.rank === "preferred"))[0];
+        const cl = arr(ent.claims && ent.claims[P]).filter(c => c.rank !== "deprecated" && !(c.qualifiers && c.qualifiers.P582)).sort((a, b) => (b.rank === "preferred") - (a.rank === "preferred") || arr(b.references).length - arr(a.references).length)[0];   // valori ancora validi, i più documentati
         const dv = cl && cl.mainsnak && cl.mainsnak.datavalue; if (!dv) continue;
         if (dv.type === "wikibase-entityid"){ out.push({ P, k: nome, id: dv.value.id }); serve.add(dv.value.id); }
         else if (dv.type === "time") out.push({ P, k: nome, v: data(dv.value) });
@@ -244,7 +276,9 @@ export function scegli(S, st, { max = 10 } = {}){
   add({ k: "classico:" + (st.libro ? st.libro.titolo + ":" + st.libro.i : st.classico), tipo: "classico", perche: "leggo un libro" });
   // 7. le notizie della notte, 8. un pezzo di libro da Gutenberg, ogni tanto una citazione
   add({ k: "notizie:" + (st.notti || 0), tipo: "notizie", perche: "leggo le notizie" });
-  add({ k: "gutenberg:" + (st.gut ? st.gut.id + ":" + st.gut.pos : "n" + (st.gutN || 0)), tipo: "gutenberg", perche: "leggo un libro" });
+  // Gutenberg (Gutendex e il sito) rifiuta i server cloud (403/503, provato dal vivo): i libri arrivano da Wikisource.
+  // Il codice resta: si riattiva con S.mem.gutenberg = true se un giorno risponde.
+  if (S.mem && S.mem.gutenberg) add({ k: "gutenberg:" + (st.gut ? st.gut.id + ":" + st.gut.pos : "n" + (st.gutN || 0)), tipo: "gutenberg", perche: "leggo un libro" });
   if ((st.notti || 0) % 3 === 1 && tue[0]) add({ k: chiave("wikiquote", tue[(st.notti || 0) % Math.min(5, tue.length)]), tipo: "citazione", q: tue[(st.notti || 0) % Math.min(5, tue.length)], perche: "cerco cosa ne hanno detto" });
   // 6. collegamenti che toccano i tuoi argomenti
   const mie = new Set(tue.slice(0, 60));
@@ -274,7 +308,7 @@ export async function studia({ fetch, S, stato, budgetMs = 45000, maxPagine = 10
   };
   const tempo = () => ora() - t0 < budgetMs;
   const impara = async (pag, fonte, job, { tante = 120, scoperta = true } = {}) => {
-    const { fr, tradotto } = await inItaliano(pag.testo, tante); if (!fr.length) return 0;
+    const { fr, tradotto } = fonte === "wikizionario" ? { fr: dizionario(pag.testo, pag.titolo), tradotto: false } : await inItaliano(pag.testo, tante); if (!fr.length) return 0;
     letture.push(...fr);
     if (job.tipo === "materia") gruppo("materie", job.materia, fr); else if (job.tipo === "classico") gruppo("libri", job.libro, fr); else if (job.tipo !== "parola") gruppo("temi", pag.titolo, fr);
     if (scoperta){ const d = definizione(fr, pag.titolo); if (d){ const sc = { t: ora(), argomento: pag.titolo, x: d.length > 260 ? d.slice(0, 257).replace(/\s\S*$/, "") + "…" : d, fonte: (FONTI[fonte] ? FONTI[fonte].nome : fonte) + (tradotto && fonte !== "inglese" ? " (tradotto dall'inglese)" : tradotto ? " (tradotta)" : ""), url: pag.url, perche: job.perche };
