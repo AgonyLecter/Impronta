@@ -41,7 +41,7 @@ export const mezza = { toHalf, enc(f32){ const h = new Uint16Array(f32.length); 
 
 /* parametro: matrice righe×colonne. Gradiente e stato di Adam nascono solo quando servono
    (un telefono che usa soltanto una rete grande non spreca memoria per allenarla) */
-class P {
+export class P {
   constructor(r, c, init){ this.r = r; this.c = c; this.d = new Float32Array(r*c); this._g = this._m = this._v = null; if (init) for (let i=0;i<this.d.length;i++) this.d[i] = init(); }
   get g(){ return this._g || (this._g = new Float32Array(this.d.length)); }
   get m(){ return this._m || (this._m = new Float32Array(this.d.length)); }

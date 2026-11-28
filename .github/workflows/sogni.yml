@@ -7,12 +7,41 @@ concurrency: { group: sogni, cancel-in-progress: false }
 jobs:
   sogna:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with: { node-version: 22 }
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      # il traduttore libero (Argos en→it) e le frasi di Tatoeba si scaricano una volta e restano in cache
+      - uses: actions/cache/restore@v4
+        with:
+          path: ~/.impronta
+          key: impronta-dati-v1-${{ github.run_id }}
+          restore-keys: impronta-dati-v1-
       - run: npm install --prefix tools --no-audit --no-fund
+      - run: pip install --quiet --disable-pip-version-check ctranslate2 sentencepiece || echo "traduttore libero non installato"
+      - name: traduttore libero (solo la prima volta)
+        run: |
+          if ! ls ~/.impronta/argos/*/sentencepiece.model >/dev/null 2>&1; then
+            python3 tools/traduci.py --scarica && echo "NUOVO=1" >> "$GITHUB_ENV" || echo "traduttore libero non disponibile"
+          fi
+      - name: frasi di Tatoeba (solo la prima volta)
+        run: |
+          mkdir -p ~/.impronta
+          if [ ! -s ~/.impronta/ita.txt ]; then
+            curl -sL --max-time 180 -A "Mozilla/5.0 (impronta)" https://www.manythings.org/anki/ita-eng.zip -o /tmp/ita.zip \
+              && unzip -o -q /tmp/ita.zip ita.txt -d ~/.impronta && echo "NUOVO=1" >> "$GITHUB_ENV" || echo "Tatoeba non disponibile"
+          fi
+          ls -la ~/.impronta || true
+      - if: env.NUOVO == '1'
+        uses: actions/cache/save@v4
+        with:
+          path: ~/.impronta
+          key: impronta-dati-v1-${{ github.run_id }}
       - run: node tools/sogna.mjs
         env:
           FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+          TATOEBA: /home/runner/.impronta/ita.txt
+          ARGOS_DIR: /home/runner/.impronta/argos

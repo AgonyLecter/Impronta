@@ -12,6 +12,8 @@ await c.route('https://it.wikipedia.org/**', async r=>{ const q=Object.fromEntri
   const T={Vulcano:"Un vulcano è una struttura geologica da cui fuoriesce il magma proveniente dall'interno della Terra. I vulcani si trovano spesso ai margini delle placche tettoniche. L'Etna è il vulcano attivo più alto d'Europa e si trova in Sicilia. Le eruzioni possono essere esplosive oppure effusive. Il Vesuvio distrusse Pompei nel 79 dopo Cristo.",
     Geometria:"La geometria è la parte della matematica che si occupa delle forme nello spazio. La parola geometria deriva dal greco e significa misura della terra. Euclide scrisse gli Elementi, il libro di geometria più famoso della storia."};
   const t=q.titles; return J({query:{pages:[T[t]?{title:t,extract:T[t],links:[{title:'Magma'},{title:'Etna'}]}:{title:t,missing:true}]}}); });
+await c.route('https://en.wikipedia.org/**', async r=>{ const q=Object.fromEntries(new URL(r.request().url()).searchParams);
+  r.fulfill({status:200,contentType:'application/json',headers:{'access-control-allow-origin':'*'},body:JSON.stringify({query:{search:/quokka/i.test(q.srsearch||'')?[{title:'Quokka'}]:[]}})}); });
 const p=await c.newPage();const errs=[];
 p.on('pageerror',e=>errs.push('PAGE '+e.message));p.on('console',m=>{if(m.type()==='error'&&!/firebase|gstatic|fonts|ERR_|403|Failed to load|vibrate/.test(m.text()))errs.push('CONSOLE '+m.text())});
 await p.goto('http://impronta.local/'); await p.waitForTimeout(5000);
@@ -39,6 +41,7 @@ const st=await p.evaluate(()=>{const S=JSON.parse(localStorage.impronta_state); 
 ok(st.sc.includes('Vulcano') && st.q.includes('vulcani'),'la scoperta è salvata e stanotte il server approfondisce');
 r=await tell('studia la geometria'); ok(/geometria/.test(r) && /forme|matematica/.test(r),'«studia la geometria» → studia subito');
 r=await tell('cosa sai dei vulcani?'); ok(/struttura geologica|magma/.test(r),'se lo richiedi se lo ricorda');
+r=await tell('cosa sai dei quokka?'); ok(/solo una pagina in inglese/.test(r) && /traduco/.test(r),'se c\'è solo in inglese lo dice e stanotte lo traduce');
 r=await tell('cosa sai dei draghi volanti?'); ok(/non sono riuscito|stanotte/.test(r),'se non trova niente lo dice e ci riprova di notte');
 await tell('oggi sono felice perché vado al mare');
 console.log('\nDIALOGO\n'+dialogo.join('\n'));

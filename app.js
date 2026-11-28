@@ -5,6 +5,7 @@ import { Nucleo, AFFETTI, etichetta, conferma, registra, analizza } from "./nucl
 import { impacchetta, spacchetta } from "./nucleo/pacco.js";
 import { cervello, galassia, puntini, tile, segmenti, titolo } from "./hud.js";
 import { lettore, frasi as frasiDa, definizione } from "./nucleo/studio.js";
+import * as Mondo from "./mondo.js";
 const { PHASES, LIMITS, ENERGY, NEED, HOUR, DAY, DAYS, G, STOP, START } = B;
 
 /* ================= CONFIG ================= */
@@ -46,7 +47,7 @@ function blank(id){ return { v:2, id, born:0, name:"", userName:"", firstWord:""
   phase:3, words:{}, phrases:{}, quotes:[], likes:[], dislikes:[], defs:{}, self:{is:[],likes:[]}, facts:{},
   traits:{calore:0,ironia:0,curiosita:0,coraggio:0,calma:0,malinconia:0},
   user:{msgs:0,chars:0,emoji:{},emojiMsgs:0,lower:0,excl:0,dot:0,abbr:{},hours:Array(24).fill(0),firstLens:[],lens:[],typing:{n:0,cps:0,del:0}},
-  mem:{feel:[],events:[],people:{},topics:{},corpus:[],ask:null,openers:[],react:{},reward:{},labels:[],mood:[],pendingQ:null,confirm:null,ironyLex:{},ironyStats:{asked:0,hist:[]},studia:[],scoperte:[],studio:null},
+  mem:{feel:[],events:[],people:{},topics:{},corpus:[],ask:null,openers:[],react:{},reward:{},labels:[],mood:[],pendingQ:null,confirm:null,ironyLex:{},ironyStats:{asked:0,hist:[]},studia:[],scoperte:[],studio:null,notizie:[],citazioni:[],feed:[],luogo:null,traduttore:null},
   log:[], diary:[], diaryUnread:0, glyphs:[], revealed:true,
   energy:{used:0,sleepUntil:0}, lastSeen:0, sessions:0, sparks:{}, hurt:0, promise:0, litSeen:0, sound:true, netSync:0, netUp:0, updatedAt:0 }; }
 const arr = v => Array.isArray(v) ? v : v ? Object.values(v) : [];
@@ -57,7 +58,7 @@ function normalize(s, id){
   for (const k of ["hours","firstLens","lens"]) o.user[k] = arr(o.user[k]);
   if (o.user.hours.length < 24) o.user.hours = Array(24).fill(0).map((_,i)=>o.user.hours[i]||0);
   o.user.typing = Object.assign({n:0,cps:0,del:0}, o.user.typing||{});
-  for (const k of ["feel","events","corpus","openers","labels","mood","studia","scoperte"]) o.mem[k] = arr(o.mem[k]);
+  for (const k of ["feel","events","corpus","openers","labels","mood","studia","scoperte","notizie","citazioni","feed"]) o.mem[k] = arr(o.mem[k]);
   // pulizia: i link finiti tra le frasi e le parole, e le "scoperte" di pagine di Google
   o.mem.corpus = o.mem.corpus.filter(l => !/\b(https?|www)\b/.test(l));
   for (const w of ["https","http","www"]) delete (o.words||{})[w];
@@ -630,7 +631,11 @@ async function liveStudy(q, perche){
       if (d) ris = { p, fr, d: d.length > 260 ? d.slice(0, 257).replace(/\s\S*$/, "") + "…" : d }; }
   } catch (e){ console.warn("studio dal vivo", e && e.message); }
   F.dream = 0; reading = false;
-  if (!ris){ addStudy({ k:"argomento", x:q }); await say(`non sono riuscito a leggere niente su ${q}. ci riprovo stanotte`, { emo:"sad", raw:true, src:"studio", cap:"forse sei offline, o Wikipedia non ha una voce con quel nome" }); return; }
+  if (!ris){
+    // c'è solo in inglese? stanotte il server la traduce
+    let en = null; try { const L = lettore((u, o) => fetch(u, { signal: o && o.signal }), { pausa: 100, timeout: 10000 }); [en] = await L.cerca("inglese", q, 1); } catch (e){}
+    if (en){ addStudy({ k:"argomento", x:q }); await say(`su ${q} ho trovato solo una pagina in inglese, «${en.toLowerCase()}». stanotte la traduco e te la racconto`, { emo:"curious", raw:true, src:"studio", cap:"di notte, sul server, traduce dall'inglese e impara in italiano" }); return; }
+    addStudy({ k:"argomento", x:q }); await say(`non sono riuscito a leggere niente su ${q}. ci riprovo stanotte`, { emo:"sad", raw:true, src:"studio", cap:"forse sei offline, o Wikipedia non ha una voce con quel nome" }); return; }
   const { p, fr, d } = ris, before = STUDIATE.length;
   const r = await nucleo.leggi(fr); await lessico();
   S.mem.scoperte.push({ t: now(), argomento: p.titolo, x: d, fonte: "Wikipedia", url: p.url, perche, detta: 1 }); if (S.mem.scoperte.length > 60) S.mem.scoperte.splice(0, S.mem.scoperte.length - 60);
@@ -639,6 +644,88 @@ async function liveStudy(q, perche){
   await say(`ho letto «${p.titolo.toLowerCase()}». ${lowerFirst(d)}`, { emo:"happy", raw:true, src:"studio",
     cap: `fonte: Wikipedia · ${fr.length} frasi nella sua rete${nuove ? ` · ${nuove} parole nuove` : ""} · stanotte approfondisce` });
   addStudy({ k:"argomento", x:q, vivo: 1 });   // il server, di notte, segue i collegamenti
+}
+/* ================= MONDO =================
+   meteo, luoghi, fatti certi, parole, notizie, citazioni, feed (mondo.js). Sempre in italiano, sempre con la fonte. */
+async function posizione(chiedi = true){
+  const L = S.mem.luogo; if (L && now() - L.t < 6*HOUR) return L;
+  if (!chiedi || !navigator.geolocation) return L || null;
+  const pos = await new Promise(res => { try { navigator.geolocation.getCurrentPosition(p => res(p), () => res(null), { timeout: 12000, maximumAge: 30*60e3 }); } catch (e){ res(null); } });
+  if (!pos) return L || null;
+  const lat = +pos.coords.latitude.toFixed(2), lon = +pos.coords.longitude.toFixed(2);   // circa un chilometro: basta per il meteo
+  let nome = L && L.nome; try { nome = await Mondo.doveSono(fetch, lat, lon) || nome; } catch (e){}
+  S.mem.luogo = { lat, lon, nome, t: now() }; save(); return S.mem.luogo;
+}
+async function rispondiMondo(it){
+  const dici = (x, cap, emo = "curious") => say(x, { emo, raw:true, src:"mondo", cap });
+  try {
+    if (it.tipo === "meteo"){
+      let P = null, nome = null;
+      if (it.luogo){ P = await Mondo.geocodifica(fetch, it.luogo); nome = P && P.nome; if (!P){ await dici(`non trovo ${it.luogo} sulla mappa`, "prova con il nome di una città"); return true; } }
+      else { setCap("per dirti il tempo da te gli serve la tua posizione (solo la città, circa)"); P = await posizione(true); nome = P && P.nome; }
+      if (!P){ await dici("non so dove sei. dimmi la città: «che tempo fa a Milano?»", "non ha la tua posizione"); return true; }
+      const M = await Mondo.meteo(fetch, P), c = Mondo.consiglio(M);
+      await dici(Mondo.fraseMeteo(M, it.luogo ? nome : null, it.quando) + (c && it.quando !== "domani" ? `. ${c}` : ""), `fonte: Open-Meteo${nome && !it.luogo ? ` · ${nome}` : ""}`, c ? "surprised" : "happy");
+      return true;
+    }
+    if (it.tipo === "qui"){ const P = await posizione(true); await dici(P && P.nome ? `sei a ${P.nome}` : P ? "so dove sei, ma non come si chiama il posto" : "non lo so. non mi hai dato la posizione", "fonte: OpenStreetMap"); return true; }
+    if (it.tipo === "dove"){
+      const r = await Mondo.luogo(fetch, it.q); if (!r){ await dici(`non trovo ${it.q} sulla mappa`, "fonte: OpenStreetMap"); return true; }
+      const me = S.mem.luogo, km = me ? Math.round(Mondo.distanza(me, r)) : null;
+      await dici(`${r.nome.toLowerCase()} si trova ${r.dove ? "in " + r.dove : "qui: " + r.lat.toFixed(2) + ", " + r.lon.toFixed(2)}${km != null ? `. è a ${km.toLocaleString("it-IT")} km da te` : ""}`, "fonte: OpenStreetMap");
+      return true;
+    }
+    if (it.tipo === "fatto"){
+      const r = await Mondo.fatto(fetch, it.P, it.q);
+      if (!r) return false;                                         // non sa cos'è: ci pensa il resto (studio dal vivo)
+      await dici(r.manca ? `su ${r.titolo.toLowerCase()} non trovo questo dato${r.descrizione ? `. so che è ${r.descrizione}` : ""}` : r.x, `fonte: Wikidata · ${r.titolo}`);
+      return true;
+    }
+    if (it.tipo === "sinonimi" || it.tipo === "parola"){
+      const w = await Mondo.parola(fetch, it.q); if (!w) return false;
+      const parti = [];
+      if (w.sinonimi.length) parti.push(`${it.q} è come ${w.sinonimi.slice(0, 4).join(", ")}`);
+      if (w.tipo.length) parti.push(`${parti.length ? "ed " : `${it.q} `}è un tipo di ${w.tipo[0]}`);
+      if (!parti.length) return false;
+      await dici(parti.join(". "), "dal suo dizionario (WordNet italiano)"); return true;
+    }
+    if (it.tipo === "inglese"){
+      const ws = await Mondo.daInglese(fetch, it.q), noti = ws.filter(x => x.it);
+      if (!noti.length) return false;
+      if (ws.length === 1) await dici(`«${it.q}» in italiano: ${ws[0].it.slice(0, 3).join(", ")}`, "dal suo dizionario inglese → italiano");
+      else await dici(`parola per parola: ${ws.map(x => x.it ? `${x.en} → ${x.it[0]}` : x.en).join(", ")}. le frasi intere le traduco di notte`, "di notte traduce le frasi intere sul server");
+      return true;
+    }
+    if (it.tipo === "notizie"){
+      const N = S.mem.notizie.slice().reverse(); if (!N.length){ await dici("non ho ancora letto notizie. le leggo stanotte mentre dormo", "ogni notte legge i giornali (Il Post, ANSA e i feed che gli dai)"); return true; }
+      const n = N.find(x => !x.detta) || N[0]; n.detta = 1; save();
+      await dici(`stanotte ho letto che: ${lowerFirst(n.titolo.replace(/\.$/, ""))}`, `fonte: ${n.fonte}${N.filter(x => !x.detta).length ? ` · altre ${N.filter(x => !x.detta).length} nella scheda studio` : ""}`);
+      return true;
+    }
+    if (it.tipo === "citazione"){
+      const C = S.mem.citazioni, q = it.q;
+      let c = C.slice().reverse().find(x => !q || (x.argomento || "").includes(q) || (x.x || "").toLowerCase().includes(q));
+      if (!c && (q || C.length === 0)){ const L = lettore((u, o) => fetch(u, { signal: o && o.signal }), { pausa: 100 }); const cs = await L.citazioni(q || pick(["amicizia","felicità","tempo","vita"])); c = cs[0]; if (c){ S.mem.citazioni.push({ ...c, t: now(), argomento: q }); save(); } }
+      if (!c){ await dici(`non ho trovato citazioni${q ? " su " + q : ""}`, "fonte: Wikiquote"); return true; }
+      await dici(`«${c.x}»`, `fonte: Wikiquote · ${c.autore || c.argomento || ""}`); return true;
+    }
+    if (it.tipo === "segui"){
+      if (!S.mem.feed.includes(it.url)) S.mem.feed.push(it.url); if (S.mem.feed.length > 8) S.mem.feed.shift(); save();
+      await dici("va bene. lo leggerò ogni notte e ti racconto", "i feed RSS che segue sono nella scheda studio", "happy"); return true;
+    }
+  } catch (e){ console.warn("mondo", e && e.message); await dici("non riesco a raggiungerlo adesso. forse sei offline", "", "sad"); return true; }
+  return false;
+}
+async function tellNews(){
+  const n = S.mem.notizie.slice().reverse().find(x => !x.detta); if (!n) return false; n.detta = 1;
+  await say(`stanotte ho letto che: ${lowerFirst(n.titolo.replace(/\.$/, ""))}`, { emo:"curious", raw:true, src:"mondo", cap:`fonte: ${n.fonte}` });
+  save(); return true;
+}
+async function tellWeather(){
+  const L = S.mem.luogo; if (!L) return false;
+  try { const M = await Mondo.meteo(fetch, L), c = Mondo.consiglio(M); if (!c) return false;
+    await say(`${c}. ${Mondo.fraseMeteo(M, null)}`, { emo:"surprised", raw:true, src:"mondo", cap:`fonte: Open-Meteo${L.nome ? " · " + L.nome : ""}` }); return true;
+  } catch (e){ return false; }
 }
 async function tellDiscovery(){
   const nuove = S.mem.scoperte.filter(x => !x.detta); if (!nuove.length) return false;
@@ -662,7 +749,10 @@ function showStudy(){
       ${st.libro ? `${titolo("sta leggendo")}<div class="prog"><span class="ell">${esc(st.libro.replace(/\s*\(\d+\/\d+\)$/, ""))}</span>${segmenti(frac(st.libro), 12, true)}<small>${esc((st.libro.match(/\((\d+\/\d+)\)/) || [, ""])[1])}</small></div>` : ""}
       ${(st.curiosita || []).length ? `${titolo("curiosità per le prossime notti")}<div class="chips lib">${st.curiosita.map(x => `<span>${esc(x)}</span>`).join("")}</div>` : ""}` : ""}
     ${R.length ? `${titolo("le tue richieste")}<div class="chips">${R.map(q => `<span class="${q.fatto ? "" : "hot"}">${esc(q.k === "link" ? host(q.x) || q.x : q.x)}<small>${q.fatto ? "✓ " + dstr(q.fatto) : "stanotte"}</small></span>`).join("")}</div>` : ""}
-    ${titolo("scoperte", D.length)}${D.length ? D.map(d => `<div class="card"><header><b>${esc(d.argomento)}</b><span>${dstr(d.t)} · ${d.url ? `<a href="${esc(d.url)}" target="_blank" rel="noopener">${esc(d.fonte)}</a>` : esc(d.fonte)}</span></header><p>${esc(d.x)}</p>${d.perche ? `<p class="muted" style="margin-top:6px;font-size:11px">${esc(d.perche)}</p>` : ""}</div>`).join("") : `<p class="muted">ancora nessuna.</p>`}`);
+    ${S.mem.notizie.length ? `${titolo("notizie della notte", S.mem.notizie.length)}${S.mem.notizie.slice().reverse().slice(0, 8).map(n => `<div class="card"><header><b>${esc(n.fonte)}</b><span>${dstr(n.t)}${n.url ? ` · <a href="${esc(n.url)}" target="_blank" rel="noopener">apri</a>` : ""}</span></header><p>${esc(n.titolo)}</p></div>`).join("")}` : ""}
+    ${titolo("giornali che legge", (S.mem.feed.length + 2) + "")}<div class="chips"><span>Il Post</span><span>ANSA</span>${S.mem.feed.map(f => `<span class="hot">${esc(host(f) || f)}</span>`).join("")}</div><p class="muted" style="margin-top:6px">per aggiungerne uno: «segui» e l'indirizzo del feed RSS</p>
+    ${S.mem.citazioni.length ? `${titolo("citazioni", S.mem.citazioni.length)}${S.mem.citazioni.slice().reverse().slice(0, 4).map(c => `<div class="card"><p>«${esc(c.x)}»</p><p class="muted" style="margin-top:6px;font-size:11px">${esc(c.autore || "")} · Wikiquote</p></div>`).join("")}` : ""}
+    ${titolo("scoperte", D.length)}${D.length ? D.map(d => `<div class="card"><header><b>${esc(d.argomento)}</b><span>${dstr(d.t)} · ${d.url ? `<a href="${esc(d.url)}" target="_blank" rel="noopener">${esc(d.fonte)}</a>` : esc(d.fonte)}</span></header><p>${esc(d.x)}</p>${d.fatti && d.fatti.length ? `<p class="muted" style="margin-top:6px;font-size:11px">${d.fatti.slice(0, 5).map(f => esc(f.k + ": " + f.v)).join(" · ")} · Wikidata</p>` : ""}${d.perche ? `<p class="muted" style="margin-top:6px;font-size:11px">${esc(d.perche)}</p>` : ""}</div>`).join("") : `<p class="muted">ancora nessuna.</p>`}`);
 }
 
 /* ================= ASSENZA ================= */
@@ -697,7 +787,7 @@ async function welcome(){
   await checkPhase();
   if (!S.name) return;
   if (el < 20*60e3 && last){ setEmo("happy", 1500); save(); return; }
-  const told = p>=3 && await tellDiscovery();
+  const told = p>=3 && (await tellDiscovery() || (el > 6*HOUR && rnd() < .6 && await tellWeather()) || (rnd() < .5 && await tellNews()));
   if (told) {}
   else if (p>=3 && S.hurt>.35) await say(B.pickTemplate(ctx,"hurtback"), {emo:"hurt", raw:true});
   else if (el > 2*DAY) await (p>=2 ? say(B.pickTemplate(ctx,"absenceLong")||"...", {emo:"sad", raw:true}) : say(pick(G.greet), {glyph:true, emo:"sad"}));
@@ -873,7 +963,8 @@ $("#bar").addEventListener("submit", e=>{
         declared = { caught: !!(lastC && /come no|sul serio|ironi|scherz|bello eh/.test(lastC.x)) };
       }
     }
-    const studyAns = !confirmed && !declared && phase() >= 3 ? studyReply(msg, a) : null;
+    const mondoIt = !confirmed && !declared && phase() >= 3 ? Mondo.intento(msg) : null;
+    const studyAns = !confirmed && !declared && !mondoIt && phase() >= 3 ? studyReply(msg, a) : null;
     const newW = B.learn(S, msg, a, now()); updateTraits(a);
     // etichette automatiche (emoji, segnali) e ricordo dell'umore per capire il carattere
     const lab = etichetta(msg, a, AFFETTI);
@@ -885,6 +976,7 @@ $("#bar").addEventListener("submit", e=>{
     if (hit){ oracleP = null; await revealOracle(); await say(phase()>=2 ? "lo sapevo" : "!", {emo:"happy", raw:true, cap:"sapeva cosa avresti scritto"}); }
     else if (declared){ oracleP = null; hideOracle();
       await say(declared.caught ? "ahah. l'avevo capito" : "ah! ci sono cascato. me lo segno", { emo: declared.caught ? "smirk" : "surprised", raw:true, src:"chiede", cap:"sta imparando quando sei ironico" }); }
+    else if (mondoIt && await rispondiMondo(mondoIt)){ oracleP = null; hideOracle(); }
     else if (studyAns && studyAns.live){ oracleP = null; hideOracle(); await liveStudy(studyAns.live, studyAns.perche); }
     else if (studyAns){ oracleP = null; hideOracle(); await say(studyAns.x, { emo: studyAns.emo || "curious", raw:true, src:"studio", cap: studyAns.cap || "" }); }
     else if (confirmed){ oracleP = null; hideOracle();
@@ -983,7 +1075,8 @@ async function showWords(){
   const G = galassia(c, { pts, peso: w => S.words[w] ? S.words[w].c : .6, tua: w => !!S.words[w], onTap: async w => {
     const near = await mente.near(w, among); G.scegli(w, near);
     const W = S.words[w], info = $("#wInfo"); if (!info) return;
-    info.innerHTML = `<b>${esc(w)}</b>${W ? `usata ${W.c} ${W.c === 1 ? "volta" : "volte"}` : "dai libri"}${S.defs[w] ? ` · «${esc(S.defs[w])}»` : ""}<br>per lui è vicina a: ${near.map(n => `<span style="color:var(--ink)">${esc(n[0])}</span>`).join(", ") || "—"}`;
+    const wn = await Mondo.parola(fetch, w).catch(() => null);
+    info.innerHTML = `<b>${esc(w)}</b>${W ? `usata ${W.c} ${W.c === 1 ? "volta" : "volte"}` : "dai libri"}${S.defs[w] ? ` · «${esc(S.defs[w])}»` : ""}<br>per lui è vicina a: ${near.map(n => `<span style="color:var(--ink)">${esc(n[0])}</span>`).join(", ") || "—"}${wn && (wn.tipo.length || wn.sinonimi.length) ? `<br>dal dizionario: ${wn.tipo.length ? `è un tipo di ${esc(wn.tipo[0])}` : ""}${wn.tipo.length && wn.sinonimi.length ? " · " : ""}${wn.sinonimi.length ? `come ${esc(wn.sinonimi.slice(0, 3).join(", "))}` : ""}` : ""}`;
   } });
   vizStop.push(G.stop);
 }
@@ -1024,6 +1117,9 @@ async function showMind(){
       ${tile("capisce le emozioni", cap != null ? Math.round(cap*100) + "<span class=dim>%</span>" : "—", { sub: "su frasi che non ha mai visto", frac: cap || 0, rosso: cap != null && cap < .3 })}
       ${tile("frasi lette", compact(i.steps), { sub: `${compact(i.frasi)} tue · ${compact(i.letture || 0)} dai libri` })}
       ${tile("parole", (Object.keys(S.words).length) + `<span class=dim>+${compact(STUDIATE.length)}</span>`, { sub: "tue + dai libri" })}
+      ${(() => { const T = S.mem.traduttore; if (!T) return tile("traduce dall'inglese", "—", { sub: "impara di notte, sul server, dalle frasi di Tatoeba", largo: true });
+        return tile("traduce dall'inglese, da solo", Math.round(T.nostro*100) + "<span class=dim>%</span>", { largo: true, frac: T.nostro,
+          sub: `parole giuste rispetto a una traduzione umana${T.libero != null ? ` · il traduttore libero: ${Math.round(T.libero*100)}%` : ""} · ${compact(T.passi)} frasi studiate${T.esempio && T.esempio.nostro ? `<br>«${esc(T.esempio.en)}» → «${esc(T.esempio.nostro)}»` : ""}` }); })()}
     </div>
     ${titolo("comprensione nel tempo", `<i style="display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--red);vertical-align:middle"></i> è cresciuto`)}
     <canvas id="spark" class="dots"></canvas>
