@@ -88,6 +88,7 @@ const fatti = await sognaTutti(ad, { budgetMs: 40000, perMs: 8000, studioMs: 150
 const S2 = db.stati.AAAABBBBCCCCDDDD;
 ok(fatti.length === 1 && S2.mem.scoperte.length >= 3 && S2.mem.scoperte.every(s => s.detta === 0), `lascia ${S2.mem.scoperte.length} scoperte da raccontare`);
 ok(S2.mem.studia.every(q => q.fatto), "le tue richieste risultano fatte");
+ok(S2.mem.scoperte.some(d => Array.isArray(d.frasi) && d.frasi.length && d.frasi.every(f => f !== d.x)), "le scoperte si portano dietro qualche frase studiata (per i suoi appunti)");
 ok(S2.mem.studio && S2.mem.studio.pagine > 0, "lascia il riassunto dello studio nello stato");
 const N = spacchetta(db.nets.AAAABBBBCCCCDDDD), M2 = new Maestro(); M2.init({ saved: N, corpus });
 ok(db.nets.AAAABBBBCCCCDDDD.meta.by === "srv" && M2.lessico().length > 10, `il telefono riceve la rete con ${M2.lessico().length} parole studiate (es. ${M2.lessico().slice(0, 5).join(", ")})`);

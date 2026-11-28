@@ -7,6 +7,8 @@ import { cervello, cuore, galassia, puntini, tile, segmenti, titolo } from "./hu
 import { lettore, frasi as frasiDa, definizione, FEED } from "./nucleo/studio.js";
 import * as Mondo from "./mondo.js";
 import * as Gusti from "./nucleo/gusti.js";
+import { calcola } from "./nucleo/calcolo.js";
+import * as Appunti from "./nucleo/appunti.js";
 const { PHASES, LIMITS, ENERGY, NEED, HOUR, DAY, DAYS, G, STOP, START } = B;
 
 /* ================= CONFIG ================= */
@@ -48,7 +50,7 @@ function blank(id){ return { v:2, id, born:0, name:"", userName:"", firstWord:""
   phase:3, words:{}, phrases:{}, quotes:[], likes:[], dislikes:[], defs:{}, self:{is:[],likes:[]}, facts:{},
   traits:{calore:0,ironia:0,curiosita:0,coraggio:0,calma:0,malinconia:0},
   user:{msgs:0,chars:0,emoji:{},emojiMsgs:0,lower:0,excl:0,dot:0,abbr:{},hours:Array(24).fill(0),firstLens:[],lens:[],typing:{n:0,cps:0,del:0}},
-  mem:{feel:[],events:[],people:{},topics:{},corpus:[],ask:null,openers:[],react:{},reward:{},labels:[],mood:[],pendingQ:null,confirm:null,ironyLex:{},ironyStats:{asked:0,hist:[]},studia:[],scoperte:[],studio:null,notizie:[],citazioni:[],feed:[],luogo:null,traduttore:null,gusti:null,gustoUltimo:null},
+  mem:{feel:[],events:[],people:{},topics:{},corpus:[],ask:null,openers:[],react:{},reward:{},labels:[],mood:[],pendingQ:null,confirm:null,ironyLex:{},ironyStats:{asked:0,hist:[]},studia:[],scoperte:[],studio:null,notizie:[],citazioni:[],feed:[],luogo:null,traduttore:null,gusti:null,gustoUltimo:null,citati:[],ultimoAppunto:null},
   log:[], diary:[], diaryUnread:0, glyphs:[], revealed:true,
   energy:{used:0,sleepUntil:0}, lastSeen:0, sessions:0, sparks:{}, hurt:0, promise:0, litSeen:0, sound:true, netSync:0, netUp:0, updatedAt:0 }; }
 const arr = v => Array.isArray(v) ? v : v ? Object.values(v) : [];
@@ -59,7 +61,7 @@ function normalize(s, id){
   for (const k of ["hours","firstLens","lens"]) o.user[k] = arr(o.user[k]);
   if (o.user.hours.length < 24) o.user.hours = Array(24).fill(0).map((_,i)=>o.user.hours[i]||0);
   o.user.typing = Object.assign({n:0,cps:0,del:0}, o.user.typing||{});
-  for (const k of ["feel","events","corpus","openers","labels","mood","studia","scoperte","notizie","citazioni","feed"]) o.mem[k] = arr(o.mem[k]);
+  for (const k of ["feel","events","corpus","openers","labels","mood","studia","scoperte","notizie","citazioni","feed","citati"]) o.mem[k] = arr(o.mem[k]);
   // pulizia: i link finiti tra le frasi e le parole, e le "scoperte" di pagine di Google
   o.mem.corpus = o.mem.corpus.filter(l => !/\b(https?|www)\b/.test(l));
   for (const w of ["https","http","www"]) delete (o.words||{})[w];
@@ -591,6 +593,17 @@ function findDiscovery(q){
   const D = S.mem.scoperte.slice().reverse(), lo = x => B.deacc(String(x).toLowerCase());
   return D.find(s => lo(s.argomento) === k) || D.find(s => lo(s.argomento).startsWith(ks) || k.startsWith(lo(s.argomento))) || D.find(s => lo(s.x).split(/\W+/).slice(0, 6).some(w => w.length > 3 && w.startsWith(ks)));
 }
+/* i suoi appunti: tutto ciò che ha letto. La sua rete allarga la ricerca alle parole vicine di significato */
+async function cercaAppunti(msg, minimo){
+  const Q = Appunti.quaderno(S.mem); if (!Q.length) return null;
+  const vicine = {};
+  if (nucleo.ready){ const tra = Appunti.lessicoQuaderno(Q).slice(0, 1500);
+    for (const w of Appunti.chiave(msg).slice(0, 4)){ try { vicine[w] = await mente.near(w, tra); } catch (e){} } }
+  const h = Appunti.cerca(Q, msg, { vicine, escludi: new Set(S.mem.citati || []) });
+  return h && h.punteggio >= minimo ? h : null;
+}
+function citato(h){ S.mem.citati = [...(S.mem.citati || []), h.x].slice(-12); }
+const capAppunti = h => `dai suoi appunti · ${h.fonte || "letto di notte"}${h.parole && h.parole.length ? ` · ha collegato: ${h.parole.slice(0, 3).join(", ")}` : ""}`;
 function studyReply(msg, a){
   const low = (a.low || msg.toLowerCase()).trim(), url = msg.match(/https?:\/\/[^\s]+/);
   if (url && /share\.google|google\.[a-z.]+\/(search|url)|g\.co\//.test(url[0])) return { x: "questo è un link di google, non l'articolo. aprilo e mandami l'indirizzo della pagina vera", emo:"curious", cap:"i link «condividi» di Google portano a una pagina di Google, non al testo" };
@@ -639,7 +652,7 @@ async function liveStudy(q, perche){
     addStudy({ k:"argomento", x:q }); await say(`non sono riuscito a leggere niente su ${q}. ci riprovo stanotte`, { emo:"sad", raw:true, src:"studio", cap:"forse sei offline, o Wikipedia non ha una voce con quel nome" }); return; }
   const { p, fr, d } = ris, before = STUDIATE.length;
   const r = await nucleo.leggi(fr); await lessico();
-  S.mem.scoperte.push({ t: now(), argomento: p.titolo, x: d, fonte: "Wikipedia", url: p.url, perche, detta: 1 }); if (S.mem.scoperte.length > 60) S.mem.scoperte.splice(0, S.mem.scoperte.length - 60);
+  S.mem.scoperte.push({ t: now(), argomento: p.titolo, x: d, frasi: fr.filter(f => f !== d && f.length < 220).slice(0, 6), fonte: "Wikipedia", url: p.url, perche, detta: 1 }); if (S.mem.scoperte.length > 60) S.mem.scoperte.splice(0, S.mem.scoperte.length - 60);
   save(); render(); ripple(.6, 55);
   const nuove = Math.max(0, STUDIATE.length - before);
   await say(`ho letto «${p.titolo.toLowerCase()}». ${lowerFirst(d)}`, { emo:"happy", raw:true, src:"studio",
@@ -964,11 +977,15 @@ $("#bar").addEventListener("submit", e=>{
         declared = { caught: !!(lastC && /come no|sul serio|ironi|scherz|bello eh/.test(lastC.x)) };
       }
     }
+    // i conti: scritti a mano (nucleo/calcolo.js), la rete non li sa fare
+    const calcAns = !confirmed && !declared && phase() >= 3 ? calcola(msg) : null;
     // domande sui SUOI gusti (nascono di notte dalle letture: nucleo/gusti.js)
-    const gustoAns = !confirmed && !declared && phase() >= 3 ? Gusti.rispondi(S.mem.gusti, msg, S.mem.gustoUltimo) : null;
+    const gustoAns = !confirmed && !declared && !calcAns && phase() >= 3 ? Gusti.rispondi(S.mem.gusti, msg, S.mem.gustoUltimo) : null;
     S.mem.gustoUltimo = gustoAns && gustoAns.ultimo || null;
-    const mondoIt = !confirmed && !declared && !gustoAns && phase() >= 3 ? Mondo.intento(msg) : null;
-    const studyAns = !confirmed && !declared && !gustoAns && !mondoIt && phase() >= 3 ? studyReply(msg, a) : null;
+    const mondoIt = !confirmed && !declared && !calcAns && !gustoAns && phase() >= 3 ? Mondo.intento(msg) : null;
+    const studyAns = !confirmed && !declared && !calcAns && !gustoAns && !mondoIt && phase() >= 3 ? studyReply(msg, a) : null;
+    // una domanda di sapere senza altre risposte: cerca nei suoi appunti (nucleo/appunti.js)
+    const sapAns = !confirmed && !declared && !calcAns && !gustoAns && !mondoIt && !studyAns && phase() >= 3 && Appunti.domandaDiSapere(msg) ? await cercaAppunti(msg, 1.5) : null;
     const newW = B.learn(S, msg, a, now()); updateTraits(a);
     // etichette automatiche (emoji, segnali) e ricordo dell'umore per capire il carattere
     const lab = etichetta(msg, a, AFFETTI);
@@ -980,6 +997,8 @@ $("#bar").addEventListener("submit", e=>{
     if (hit){ oracleP = null; await revealOracle(); await say(phase()>=2 ? "lo sapevo" : "!", {emo:"happy", raw:true, cap:"sapeva cosa avresti scritto"}); }
     else if (declared){ oracleP = null; hideOracle();
       await say(declared.caught ? "ahah. l'avevo capito" : "ah! ci sono cascato. me lo segno", { emo: declared.caught ? "smirk" : "surprised", raw:true, src:"chiede", cap:"sta imparando quando sei ironico" }); }
+    else if (calcAns){ oracleP = null; hideOracle(); await say(calcAns.x, { emo: "happy", raw:true, src:"studio", cap: calcAns.conto ? `${calcAns.conto} · l'ha calcolato lui, a mano` : "" }); }
+    else if (sapAns){ oracleP = null; hideOracle(); citato(sapAns); await say(Appunti.frase(sapAns), { emo: "curious", raw:true, src:"studio", cap: capAppunti(sapAns) }); }
     else if (gustoAns){ oracleP = null; hideOracle(); await say(gustoAns.x, { emo: "happy", raw:true, src:"studio", cap: gustoAns.cap || "" }); }
     else if (mondoIt && await rispondiMondo(mondoIt)){ oracleP = null; hideOracle(); }
     else if (studyAns && studyAns.live){ oracleP = null; hideOracle(); await liveStudy(studyAns.live, studyAns.perche); }
@@ -1012,6 +1031,9 @@ $("#bar").addEventListener("submit", e=>{
         const irV = plausible && ir.p >= .5 ? Math.max(.65, ir.p) : 0;   // nel dubbio segue l'ipotesi più probabile
         const f2 = feel ? { ...feel, ironia: irV } : (irV ? { ironia: irV } : null);
         await respond(msg, a, sense, f2);
+        // ogni tanto, se parli di qualcosa che ha studiato, aggiunge quello che ne ha letto
+        if (phase() >= 3 && !a.q && S.user.msgs - (S.mem.ultimoAppunto ?? -99) >= 4 && rnd() < .4){
+          const h = await cercaAppunti(msg, 2.5); if (h && h.diretto){ S.mem.ultimoAppunto = S.user.msgs; citato(h); await say(Appunti.frase(h, { spontanea: true }), { emo: "curious", raw:true, src:"studio", cap: capAppunti(h) }); } }
       }
     }
     nucleo.impara(200).catch(()=>{});

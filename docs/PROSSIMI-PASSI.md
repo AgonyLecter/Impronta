@@ -44,9 +44,9 @@ Gutenberg è spento (si riaccende con `S.mem.gutenberg = true`); i libri arrivan
 Riprova quando vuoi: `actions_run_trigger` run_workflow su `sogni.yml` con `inputs: {"prova_fonti": true}`.
 
 ### 4. Idee già discusse, non fatte
-- Un modulo di calcolo scritto a mano (la rete non sa fare i conti).
+- ~~Un modulo di calcolo scritto a mano~~ FATTO: `nucleo/calcolo.js` + `test/calcolo.mjs`.
 - ~~Allargare `nucleo/istinto.js`~~ FATTO: ~600 frasi; `test/emozioni.mjs` misura su frasi mai viste (banco alla cieca ~35% → ~43%). Le parole sconosciute ora si leggono dai trigrammi (`Rete.idsLeggi`).
-- Far usare alla rete gli appunti/scoperte per rispondere (oggi risponde con le scoperte salvate).
+- ~~Far usare alla rete gli appunti/scoperte per rispondere~~ FATTO: `nucleo/appunti.js` + `test/appunti.mjs` (risponde alle domande di sapere dai suoi appunti, con la fonte; ogni tanto ne parla da solo; la sua rete allarga la ricerca alle parole vicine). Idea dopo: più frasi per scoperta sul server, e un indice delle letture intere.
 
 ### 5. Preferenze SUE — FATTO (prima versione), da vedere nei giri veri
 `nucleo/gusti.js` + `test/gusti.mjs`. Ogni notte il server misura con la rete appena allenata ciò che ha letto,
