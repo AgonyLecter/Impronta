@@ -19,8 +19,17 @@ def scarica():
         print("modello già presente", file=sys.stderr); return
     indice = json.load(urllib.request.urlopen(INDICE, timeout=60))
     pacchetto = next(p for p in indice if p.get("from_code") == "en" and p.get("to_code") == "it")
-    url = next(l for l in pacchetto["links"] if l.startswith("http"))
-    dati = urllib.request.urlopen(url, timeout=300).read()
+    # l'indice ufficiale elenca più indirizzi per lo stesso modello: il sito di Argos e una copia su IPFS
+    # (rete di distribuzione pubblica). Se il primo rifiuta i download automatici, si usa il secondo.
+    dati = None
+    for link in pacchetto["links"]:
+        url = "https://ipfs.io/ipfs/" + link[len("ipfs://"):] if link.startswith("ipfs://") else link
+        try:
+            dati = urllib.request.urlopen(url, timeout=300).read(); print("scaricato da", url, file=sys.stderr); break
+        except Exception as e:
+            print("non disponibile:", url, "·", e, file=sys.stderr)
+    if dati is None:
+        raise RuntimeError("nessun indirizzo del modello disponibile")
     os.makedirs(CARTELLA, exist_ok=True)
     zipfile.ZipFile(io.BytesIO(dati)).extractall(CARTELLA)
     print("modello scaricato:", trova_modello(), file=sys.stderr)
